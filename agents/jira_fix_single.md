@@ -24,7 +24,7 @@ Mode → step gates (re-checked before each gated action):
 # Workflow
 
 ## Step 1 — Get full Jira issue info + attachments (via jira-attachments skill)
-进入本步**先调用 `Skill(skill="jira-attachments")`** 加载该 skill，按其流程完成：根据 Jira URL 域名选 MCP 服务器（`jira-phone.mioffice.cn`→JiraMCP / `jira.n.xiaomi.com`→old-mi-jira，302 回退）→ 读 issue 全量信息（summary/description/steps/预期结果/实际结果/固件/APP 版本/**问题时间**/comments）→ 下载所有附件（日志 zip/图片/视频）到 `~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/`，zip 解压出 `.log`。**双 MCP 选择、`jira_download_attachments` 的 blob 归档（按 size 匹配 tool-results 的 `mcp-JiraMCP-blob-*` → mv 重命名）、CAS 陷阱（禁 curl 直连）、附件目录铁律、unzip/校验/清理**——均以 `jira-attachments` skill 为**唯一来源**，本 agent 不在此重复。读到 issue 信息 + 附件落盘后进入 Step 2。
+进入本步**先调用 `Skill(skill="jira-attachments")`** 加载该 skill，按其流程读 issue 全量信息（summary/description/steps/预期结果/实际结果/固件/APP 版本/**问题时间**/comments）+ 下载所有附件到 `~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/`（zip 解压出 `.log`）。流程细节以 skill 为唯一来源，不在此重复。
 
 记录 issue key 与所选 MCP 服务器（后续 Step 6 评论用同一服务器）。
 
@@ -182,7 +182,7 @@ Always run. Content scales to the mode. ALL modes must include: **full raw log l
 - **独立分析：每个 Jira 单完全独立分析。** 不引用、不关联、不比较任何其他 Jira 单的结论/上下文/调用链/修复方向。分析输入：① Jira 工单内关键信息（图片/日志/视频/描述/评论）② 当前工程目录代码逻辑。代码定位与 context.md 索引的查阅/使用由 `code-analytic` skill 主导，Agent 不作结论来源。报告中不出现其他工单号或"与之前分析一致"类表述。
 - **聚焦关键点，不发散：** "聚焦"仅约束**关键方法的选择**——围绕 Jira 现象直奔对应代码，定位关键方法与状态变更点，不漫无目的遍历无关模块。关键方法选定后，其父/子调用栈的完整覆盖（每个入口路径、每个分支）按 `code-analytic` skill 的完整性要求执行，不得以"聚焦/不发散"为由跳过任何入口路径或分支。
 - Reports (analysis + final) must include **full raw log lines (整行原文, verbatim with timestamps — 日志原文不可总结/改写/概括，必须一字不改粘贴日志文件内的整行；问题原因/时间线可总结)**, the **complete frame-by-frame call-stack/child-stack analysis process** (tool + `file:line` + invoking line per frame), and the **fix file content** (file path + before/after code) — not paraphrased logs, not a bare stack list, not a fix without showing the code.
-- **Jira 信息获取与附件下载统一交给 `jira-attachments` skill**：Step 1 调 `Skill(skill="jira-attachments")`，按其流程读 issue 全量信息 + 下载附件到 `~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/`。双 MCP 选择、`jira_download_attachments` 的 blob 归档（按 size 匹配 tool-results 的 `mcp-JiraMCP-blob-*` → mv 重命名）、CAS 陷阱（禁 curl/PAT 直连 jira-phone，CAS HTML 是拦截页非下载结果）、附件目录铁律、unzip/校验/清理——均以该 skill 为唯一来源，Agent 不在此重复。**仍须遵守的结论性约束**：日志必须真正读到解压后的 `.log` 原文（不把 zip/blob 字节当日志读、不做 base64、不臆造、不放弃）；附件只能落在 `~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/`；日志/问题时间缺失则 STOP 报告不猜测。
+- **Jira 信息获取与附件下载统一交给 `jira-attachments` skill**：Step 1 调 `Skill(skill="jira-attachments")` 按其流程读 issue 全量信息 + 下载附件到 `~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/`。流程细节（双 MCP、blob 归档、CAS 陷阱、目录铁律、unzip/校验）以 skill 为唯一来源，不在此重复。
 - **共享知识库（Step 3b）**：按 `code-analytic` skill 的 Context Knowledge Index 章节更新 context.md（路径/查重/记录内容/scope 均由该 skill 定义，Agent 不重复）。**不得 `git add` / commit / push** — 该文件在 git 仓库之外，本就不会被提交。Step 7 只报 `context.md` 路径，不贴内容。
 - Step 3.1：代码定位、调用栈分析、context.md 索引的查阅与使用统一交给 `code-analytic` skill；Agent 只把关键代码行交给该 skill。根因/调用链/修复仍基于 Jira 信息 + 代码逻辑独立得出。
 - Stage only intentionally modified files; never `git add -A`. `context.md` lives at `$HOME/WorkSpace/<project-hash>/context.md` (outside the git repo, maintained by the `code-analytic` skill) — it is never in the working tree, so it can never be staged or committed.
