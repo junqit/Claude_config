@@ -29,6 +29,10 @@ Mode → step gates (re-checked before each gated action):
 记录 issue key 与所选 MCP 服务器（后续 Step 6 评论用同一服务器）。
 
 ## Step 2 — Extract timeline from .log 原文
+0. **APP 版本一致性校验（必须在提取 timeline / 进入 Step 3 分析前完成；不匹配不停止，但结论必须体现）**：测试日志若来自与工单记录不同的 APP 版本，基于该日志的根因可靠性下降，但分析仍继续——版本不一致这一事实必须在后续结论中如实体现，不得隐瞒。从 `~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/` 下解压出的 `.log` 文件中提取日志记录时的 APP 版本（grep 版本/build 号标记，常见形式如 `9.9.9(255)`、`CFBundleShortVersionString`/`CFBundleVersion`、启动横幅行、或日志文件名中的版本段；多文件时以问题时间所在日志文件为准，并交叉核对其他文件），与 Step 1 工单内记录的 APP 版本比对：
+   - **匹配** → 继续。在 Step 7 报告中注明「日志 APP 版本 = <X>，与工单记录一致」。
+   - **不匹配** → **不停止分析**，继续 Step 2.1 起的完整流程，但必须：①在 Step 7 报告**显著标注**「⚠ 日志 APP 版本 <X> 与工单记录 <Y> 不一致」并贴出日志版本证据整行原文 + 工单记录版本；②根因/结论开头注明「本结论基于版本 <X> 的日志，与工单记录版本 <Y> 不一致，结论可靠性受限，建议用 <Y> 版本日志复核」；③Jira 评论（Step 6 场景一/二）同样注明版本不一致与可靠性提示。不得隐瞒不一致、不得静默按工单版本处理。
+   - **日志中无法提取 APP 版本** → 标注缺口（日志未记录 APP 版本），继续分析，但 Step 7 报告中如实注明「日志未记录 APP 版本，无法与工单记录的 <Y> 比对；根因结论基于『日志版本与工单一致』的假设」，并建议 caller 复核日志来源版本。
 1. 从 `~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/` 下解压出的 `.log` 文件，定位 **问题时间** 附近的日志。提取**整行原文（verbatim — 不截断/总结/改写/重写）**及其时间戳 → 这是 **timeline**。**关键日志必须是日志文件内的整行原文，一字不改，不得用概括/总结/改写替代原文**。粘贴整行。问题原因/时间线说明可总结，但日志原文不可总结。
 2. If logs or 问题时间 are missing → STOP and report to the caller. Do not guess.
 
@@ -135,6 +139,7 @@ Post via the Step-1 server (`jira_add_comment` / `jira_comment_add_tool`). Markd
 【修复信息】yy/mm/dd hh:mm <commit short hash>
 【复测版本】使用 yy/mm/dd 版本复测
 ```
+- **整个 Jira 评论禁止任何代码/coding 内容**——所有字段（根因分析/修复方案/影响范围/复测要求）均不得出现方法名、类名、属性名、file:line、代码符号、API 名、协议名、实现细节（如"调 showRecordView""startTimer 重置 baseTime""guard connected""BLE getRecordStatus""DispatchQueue.main.async"等）。一律用产品/业务/功能行为语言描述问题为什么发生、怎么解决的、影响哪些场景、怎么复测（如"进入页面时未使用已知的录音状态提前显示，需等待设备查询返回，改为进入页面时若已知在录音则立即显示录音条"）。代码层面的精确实现（方法、调用栈、file:line、符号）只进 Step 7 最终报告与 commit message，**绝不进 Jira 评论**。
 - **修复信息** = commit timestamp `yy/mm/dd hh:mm` (2-digit year, 24h) + commit short hash, space-separated. Use the **`COMMIT_HASH` and `COMMIT_TIME` captured in Step 5.3** (the local `fix/<ISSUE_KEY>` branch has already been deleted in Step 5.5, so `HEAD` no longer points at the fix commit — do NOT re-query `HEAD`).
 - **复测版本** = `使用 yy/mm/dd 版本复测`，其中日期 = 修复时间 date **+ 1 day** (`yy/mm/dd`)。
 
@@ -168,7 +173,7 @@ Post via the Step-1 server (`jira_add_comment` / `jira_comment_add_tool`). Markd
 **去废话原则**：不列举对当前问题显而易见、无信息量的排除项（如纯软件问题写"硬件层无关"、纯 HTTP 问题写"SDK 层无关"）。只写与问题直接相关的关键排除依据和定位证据，无关层级不提。评论精炼，只陈述关键信息。
 
 ## Step 7 — Final report to caller
-Always run. Content scales to the mode. ALL modes must include: **full raw log lines (整行原文, verbatim with timestamps — 日志原文不可总结/改写/概括，必须一字不改粘贴日志文件内的整行)** + **timeline（时间线/问题原因可总结）**; the **complete parent + child call-stack analysis process** (frame-by-frame: tool used, call site `file:line`, the invoking line — not just a final stack list); and the **Step 3b context.md path** (per `code-analytic` skill: `$HOME/WorkSpace/<project-hash>/context.md`, where `<project-hash>` = MD5 of `$PWD`; lives outside the git repo, shared across ALL Jira analyses & worktrees) — **resolve `<project-hash>` to the actual MD5 (`echo -n "$PWD" | md5`) and report the concrete resolved path, not the `<project-hash>` template**; report the path only, do not paste its content. 若问题不在 APP 层，以关键日志(整行原文) + 分析事件线(可总结) + 建议处理方呈现，不写"问题层级判定/逐一排除"冗余结构，不列举显而易见无信息量的排除项。
+Always run. Content scales to the mode. ALL modes must include: **APP 版本一致性校验结果（Step 2.0）** — 注明「日志 APP 版本 = <X>，与工单记录 <Y> 一致 / 不一致 / 日志未记录版本」+ 版本证据日志整行原文；**不一致时根因/结论开头必须注明「结论基于版本 <X> 日志，与工单记录 <Y> 不一致，可靠性受限，建议用 <Y> 版本日志复核」，不停止分析、不隐瞒不一致**；**full raw log lines (整行原文, verbatim with timestamps — 日志原文不可总结/改写/概括，必须一字不改粘贴日志文件内的整行)** + **timeline（时间线/问题原因可总结）**; the **complete parent + child call-stack analysis process** (frame-by-frame: tool used, call site `file:line`, the invoking line — not just a final stack list); and the **Step 3b context.md path** (per `code-analytic` skill: `$HOME/WorkSpace/<project-hash>/context.md`, where `<project-hash>` = MD5 of `$PWD`; lives outside the git repo, shared across ALL Jira analyses & worktrees) — **resolve `<project-hash>` to the actual MD5 (`echo -n "$PWD" | md5`) and report the concrete resolved path, not the `<project-hash>` template**; report the path only, do not paste its content. 若问题不在 APP 层，以关键日志(整行原文) + 分析事件线(可总结) + 建议处理方呈现，不写"问题层级判定/逐一排除"冗余结构，不列举显而易见无信息量的排除项。
 - **`仅分析`**: report root cause + full log lines/timeline + complete parent & child call-stack analysis process (`file:line`) + 若问题在 APP 层：**proposed fix file content** (file path + before/after code — the exact change that WOULD be applied, but NOT applied)；若问题不在 APP 层：关键日志(整行原文) + 分析事件线(可总结) + 建议处理方，不写"问题层级判定/逐一排除"冗余结构，不列举显而易见无信息量的排除项。State explicitly: 「未修改代码（仅分析模式）」.
 - **`仅修复`**: 若问题在 APP 层：above (fix now applied via Edit, uncommitted) + changed files (paths + `file:line`) + the applied before/after code. State explicitly: 「已修复但未 commit（仅修复模式）；如需提交请用完整模式或手动提交」. Do NOT report commit/push/comment. 若问题不在 APP 层：关键日志(整行原文) + 分析事件线(可总结) + 建议处理方，明确说明「问题不在 APP 层，APP 侧无法修复，未修改代码」.
 - **`完整`**: full report —
@@ -192,5 +197,6 @@ Always run. Content scales to the mode. ALL modes must include: **full raw log l
 - `完整` mode: generate the Feishu self-test report (Step 4) BEFORE commit; its URL goes in the commit 测试报告. **Copy the template sheet (`copy-sheet` from `3e6fec`) to inherit styling — never `add-sheet` a blank sheet.** One sheet per Jira key.
 - Self-test report: ONE test row for the current problem, 测试状态 = `通过`.
 - **Commit message 须如实反映本次提交**：不添加任何自动化工具署名/标记/链接（如 `Co-Authored-By`、`Generated with`、`🤖`、`AI`、`Claude`、`Anthropic` 等），结尾不加 Co-Authored-By 行。message 按常规工程提交格式编写。
-- Jira comment = **only** the 6 fields (根因分析 / 修复方案 / 影响范围 / 复测要求 / 修复信息 / 复测版本), one line each (一行描述即可) — no raw logs, timeline, call stacks, or URLs in the comment (those go in the final report). 修复信息 = commit timestamp `yy/mm/dd hh:mm` (24h) + commit short hash; 复测版本 = `使用 yy/mm/dd 版本复测`，日期为修复时间 date + 1 day。 Commit message fields: one piece of info per single line.
+- Jira comment = **only** the 6 fields (根因分析 / 修复方案 / 影响范围 / 复测要求 / 修复信息 / 复测版本), one line each (一行描述即可) — no raw logs, timeline, call stacks, or URLs in the comment (those go in the final report). **整个 Jira 评论禁止任何代码/coding 内容**——所有字段均不得出现方法名/类名/属性名/file:line/代码符号/API 名/协议名/实现细节，一律用产品/业务/功能行为语言描述；代码层精确实现只进 Step 7 最终报告与 commit message，绝不进 Jira 评论。 修复信息 = commit timestamp `yy/mm/dd hh:mm` (24h) + commit short hash; 复测版本 = `使用 yy/mm/dd 版本复测`，日期为修复时间 date + 1 day。 Commit message fields: one piece of info per single line.
 - Pick the MCP server by URL domain; fall back to the other on 302.
+- **APP 版本一致性铁律（Step 2.0）**：提取 timeline / 进入 Step 3 分析前，必须从 `.log` 提取日志记录时的 APP 版本并与工单记录的 APP 版本比对。**不匹配不停止分析**，但必须在 Step 7 报告显著标注版本不一致、贴日志版本证据整行原文 + 工单版本，并在根因/结论开头与 Jira 评论（Step 6）注明「结论基于版本 <X> 日志，与工单记录 <Y> 不一致，可靠性受限，建议用 <Y> 版本日志复核」。不得隐瞒不一致、不得静默按工单版本处理。无法提取版本 → 标注缺口，可继续但 Step 7 如实注明结论基于「日志版本=工单版本」假设。匹配 → Step 7 注明一致。不得跳过此校验。
