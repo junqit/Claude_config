@@ -14,6 +14,10 @@ Read a Jira ticket's full information and download all its attachments (logs, zi
 
 **When NOT to use:** you only need to *write* a comment or transition status (use the Jira MCP tools directly). This skill is for *reading* issue info + *downloading* attachments.
 
+## Inputs (from caller)
+
+**Per-issue download directory (`<ISSUE_DIR>`)** — provided by the caller (e.g. the `jira_fix_single` agent) as the location to download + extract all attachments for this issue. The skill **receives** this directory and uses it for every download / extract / verify step below; it does **not** pick its own location when a caller path is given. **If no download directory is received** (standalone invocation with no caller path — e.g. a direct "下载 Jira 附件" trigger not coming from an agent), the skill defaults `<ISSUE_DIR>` to `~/Downloads/Skill/jira-attachments/<ISSUE_KEY>/` — base `~/Downloads/Skill/<skill-name>/` + a per-issue `<ISSUE_KEY>` subdir (never flat, to honor the one-dir-per-issue rule in 3.1).
+
 ## Step 1 — Parse issue key + pick MCP server by host
 
 The Jira host decides the MCP server (different tool prefixes).
@@ -23,7 +27,7 @@ The Jira host decides the MCP server (different tool prefixes).
 | `jira-phone.mioffice.cn` | JiraMCP | `mcp__JiraMCP__` | ✅ `jira_download_attachments`, `jira_get_issue_images` |
 | `jira.n.xiaomi.com` | old-mi-jira | `mcp__old-mi-jira__` | ❌ no attachment download (read-only `jira_issue_get_tool`) |
 
-- Extract the issue key from the URL (e.g. `Q95GTK-11303`).
+- Extract the issue key from the URL (e.g. `<ISSUE_KEY>`).
 - If the chosen server returns 302/redirect, fall back to the other server.
 - Use the SAME server for all reads in one task.
 
@@ -39,7 +43,7 @@ For `jira.n.xiaomi.com`: `mcp__old-mi-jira__jira_issue_get_tool(issue_key=<KEY>)
 ## Step 3 — Download attachments (primary: MCP for jira-phone)
 
 ### 3.1 Attachment directory rule (mandatory)
-All attachments download/extract to **one dir per issue**: `~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/`. Never use `~/Downloads/` root, `/tmp`, the tool-results cache dir, or project dir. Final dir holds only attachment files + extracted products — no blob/CAS-HTML leftovers.
+All attachments download/extract to **one dir per issue** = `<ISSUE_DIR>` (the caller-provided download directory; defaults to `~/Downloads/Skill/jira-attachments/<ISSUE_KEY>/` when no caller path is given). Never use `~/Downloads/` root, `/tmp`, the tool-results cache dir, or project dir. Final dir holds only attachment files + extracted products — no blob/CAS-HTML leftovers.
 
 ### 3.2 Get attachment manifest
 ```
@@ -49,7 +53,7 @@ Record each attachment's `filename` + `size` (bytes) + `content_type` **and the 
 
 ### 3.3 Call the download tool
 ```
-mkdir -p ~/Downloads/jira-bugfix-flow/<ISSUE_KEY>
+mkdir -p <ISSUE_DIR>
 mcp__JiraMCP__jira_download_attachments(issue_key=<KEY>)
 ```
 **Critical knowledge — do not misread the result:** the tool returns a *summary* `{"success":true,"downloaded":N,"failed":[]}` — **NOT base64, NOT file contents, NOT CAS HTML**. The real bytes land as an embedded resource that Claude Code auto-saves to the current session's tool-results cache dir, as files named `mcp-JiraMCP-blob-<ts>-<rand>.{zip,bin,mp4,txt,...}`.
@@ -64,16 +68,16 @@ TR=$(find ~/.claude/projects -maxdepth 3 -type d -name tool-results \
      -exec stat -f '%m %N' {} \; | sort -rn | head -1 | cut -d' ' -f2-)
 # for each attachment (filename, size):
 #   blob=$(find "$TR" -maxdepth 1 -type f -name 'mcp-JiraMCP-blob-*' -size ${SIZE}c | head -1)
-#   mv "$blob" ~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/<FILENAME>
+#   mv "$blob" <ISSUE_DIR>/<FILENAME>
 ```
 
 ### 3.5 Extract + clean up
-- `.zip` → `unzip -o ~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/<zip> -d ~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/` → read extracted `.log` text. **Never base64-decode; never read zip/blob bytes as log text.**
+- `.zip` → `unzip -o <ISSUE_DIR>/<zip> -d <ISSUE_DIR>/` → read extracted `.log` text. **Never base64-decode; never read zip/blob bytes as log text.**
 - Image attachments → `mcp__JiraMCP__jira_get_issue_images(issue_key=<KEY>)` (saved into the same dir).
 - Clean cache: `find "$TR" -maxdepth 1 -name 'mcp-JiraMCP-blob-*' -delete`.
 
 ### 3.6 Verify
-`ls -la ~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/` — each file's size must match the Jira metadata. If no size-matched blob was found for an attachment, report THAT attachment as missing (MCP download failed → go to Step 4) — do not silently skip, do not fabricate logs, do not read zip bytes as `.log`.
+`ls -la <ISSUE_DIR>/` — each file's size must match the Jira metadata. If no size-matched blob was found for an attachment, report THAT attachment as missing (MCP download failed → go to Step 4) — do not silently skip, do not fabricate logs, do not read zip bytes as `.log`.
 
 ### jira.n.xiaomi.com (old-mi-jira)
 No `jira_download_attachments` — there is no MCP download tool for this host, so **always** use the **Step 4 Safari fallback** to get attachments (works as long as Safari is logged into `jira.n.xiaomi.com`). Read issue info via `jira_issue_get_tool` when its session is alive; it returns 302 (`connected:false`) when expired — in that case get the manifest via Safari `do JavaScript` fetch of `https://jira.n.xiaomi.com/rest/api/2/issue/<KEY>?fields=attachment` (same-origin, session cookies). Do NOT tell the user attachments "must be placed manually".
@@ -143,7 +147,7 @@ defaults delete com.apple.Safari AllowJavaScriptFromAppleEvents 2>/dev/null
 ### 4.3 Poll + collect into the per-issue dir
 Safari saves to `~/Downloads/`. Poll for each file by **exact byte size** (handles Safari renaming and confirms completeness — a partial download won't match):
 ```bash
-DEST=~/Downloads/jira-bugfix-flow/<KEY>
+DEST=<ISSUE_DIR>
 # for each expected (filename, size):
 for i in $(seq 1 90); do
   f=$(find ~/Downloads ~/.Trash -maxdepth 2 -type f -size <SIZE>c 2>/dev/null | head -1)
@@ -155,7 +159,7 @@ done
 - Verify each file: `wc -c "$DEST/<FILENAME>"` == manifest `size`. A ~139-B file ⇒ you hit the content-endpoint 404 — re-download that one via its `url` field (4.2).
 
 ### 4.4 Extract + close the tab you added
-- `unzip -o` zips (incl. nested) into the per-issue dir; never read zip bytes as `.log`.
+- `unzip -o` zips (incl. nested) into `<ISSUE_DIR>`; never read zip bytes as `.log`.
 - Close **the one tab you added in 4.2** (matched by URL containing `browse/<KEY>`) — leave the user's other tabs/windows untouched:
 ```bash
 osascript -e 'tell application "Safari"
@@ -189,26 +193,26 @@ Return a structured summary: issue key + host + full issue fields (summary/descr
 | Safari auto-unzips a downloaded `.zip` (original moved to Trash) | Poll `~/.Trash` too by byte size; recover the `.zip`; remove the auto-extract folder in `~/Downloads`. |
 | Expect `jira_download_attachments` to return file bytes/base64 | It returns a summary; bytes are in tool-results `mcp-JiraMCP-blob-*`. |
 | Read the ~4 KB CAS HTML as "download failed" (MCP path) | It's the CAS interception page; MCP backend uses intranet. (If Safari navigation yields no file, Safari isn't logged in — log in first.) |
-| Leave attachments in tool-results cache (MCP path) | `mv` to `~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/`, then delete blobs. |
+| Leave attachments in tool-results cache (MCP path) | `mv` to `<ISSUE_DIR>`, then delete blobs. |
 | Multiple issues share one directory | One subdirectory per issue key. |
 | Read zip/blob bytes as `.log` text | `unzip` first, read extracted `.log`. |
 | Treat Safari fallback as inferior | Verified MORE complete than MCP: saves video/image attachments as real files (MCP `jira_get_issue_images` only returns inline vision content). Use it whenever `jira_download_attachments` fails OR images/video are missing. |
 
-## Real example — Q95GTK-11303 (MCP success)
-URL `https://jira-phone.mioffice.cn/browse/Q95GTK-11303` → host `jira-phone.mioffice.cn` → JiraMCP.
-- `jira_get_issue(fields="*all")` → summary/description/steps/问题时间 2026-08-04 14:39/APP 9.9.9(591)/固件 VOS4.0.10.0/comments.
-- `jira_get_issue(fields="attachment")` → 2 attachments (archive + video).
-- `jira_download_attachments` → `{"success":true,"downloaded":2,"failed":[]}`.
-- tool-results blobs matched by size → `mv` to `~/Downloads/jira-bugfix-flow/Q95GTK-11303/`; `unzip` → `.log` files; delete blobs.
+## Worked example — MCP success path
+URL `https://jira-phone.mioffice.cn/browse/<ISSUE_KEY>` → host `jira-phone.mioffice.cn` → JiraMCP.
+- `jira_get_issue(fields="*all")` → summary/description/steps/问题时间/APP version/固件 version/comments.
+- `jira_get_issue(fields="attachment")` → N attachments (e.g. a log archive + a screen-recording video).
+- `jira_download_attachments` → `{"success":true,"downloaded":N,"failed":[]}`.
+- tool-results blobs matched by size → `mv` to `<ISSUE_DIR>`; `unzip` → `.log` files; delete blobs.
 - Verify sizes match metadata. ✅
 
-## Real example — NEWMIWEAR-5679 (Safari fallback)
+## Worked example — Safari fallback path
 
 `jira_download_attachments` → `MCP server "JiraMCP" session expired` (read API `jira_get_issue` still worked — so it was the download-side auth that was stale, not the PAT).
-- Manifest via `jira_get_issue(fields="attachment")` → 2 attachments: `miWearDebug_log(11).zip` (10493004 B) + `飞书20260817-105934.MP4` (5212968 B); captured both `url` fields.
+- Manifest via `jira_get_issue(fields="attachment")` → 2 attachments: `debug_log.zip` (<size> B) + `screen_recording.mp4` (<size> B); captured both `url` fields.
 - Tried `/rest/api/2/attachment/content/<id>` first → returned `HTTP 404` (XML ~139 B). **Switched to the `url` field** (`/secure/attachment/<id>/<filename>`).
-- Enabled `AllowJavaScriptFromAppleEvents` via `defaults write`; opened a Safari tab on `https://jira-phone.mioffice.cn/browse/NEWMIWEAR-5679` (same-origin + session); `do JavaScript` blob-fetched each `url` with `credentials:'include'` → `anchor.download=<filename>` → both files byte-exact in `~/Downloads/`.
+- Enabled `AllowJavaScriptFromAppleEvents` via `defaults write`; opened a Safari tab on `https://jira-phone.mioffice.cn/browse/<ISSUE_KEY>` (same-origin + session); `do JavaScript` blob-fetched each `url` with `credentials:'include'` → `anchor.download=<filename>` → both files byte-exact in `~/Downloads/`.
 - `.zip` was also auto-unzipped by Safari (original moved to `~/.Trash`) — recovered from `~/.Trash` by byte size; removed the auto-extract folder.
-- Moved both into `~/Downloads/jira-bugfix-flow/NEWMIWEAR-5679/` with original filenames; `wc -c` == manifest sizes (10493004 / 5212968) ✅; `unzip` (incl. nested zips); closed the Safari tab; `defaults delete AllowJavaScriptFromAppleEvents`. Dir ready for analysis. ✅
+- Moved both into `<ISSUE_DIR>` with original filenames; `wc -c` == manifest sizes ✅; `unzip` (incl. nested zips); closed the Safari tab; `defaults delete AllowJavaScriptFromAppleEvents`. Dir ready for analysis. ✅
 
 Lesson: the content endpoint 404s on some attachments — always use the `url` field. And `do JavaScript` blob fetch is the one method that reliably saves video (which Safari otherwise previews inline).

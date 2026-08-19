@@ -24,13 +24,13 @@ The skill **receives a key code line as its starting point** (a `file:line` iden
 **Stop tracing at system methods, binary libraries, or any third-party code whose source cannot be read.** Mark these as "black box" and infer behavior from observable evidence (logs / docs / runtime behavior). Do not speculate about internal implementation.
 
 Concretely stop when the next frame is:
-- A system framework method (UIKit / Foundation / CoreMedia / AVFoundation / Photos / etc.)
-- A precompiled binary library / closed-source SDK (Pods without source, `.framework` / `.a` binaries)
+- A platform system-framework method (e.g. on iOS: UIKit / Foundation / CoreMedia / AVFoundation / Photos / …; on Android: `android.*` framework; etc.)
+- A precompiled binary library / closed-source SDK (e.g. iOS Pods without source, `.framework` / `.a` binaries; Android `.aar` / third-party modules; binary packages on other platforms)
 - Any code not present in the current working directory's source tree
 
 Do NOT stop at:
-- First-party source in the working directory (even if in a sub-library like LocalLib / AlgoProcessorLib — read it)
-- Open-source Pods whose source is checked out (read the source)
+- First-party source in the working directory (even if in a sub-library / internal module — read it)
+- Open-source dependencies (e.g. Pods, packages) whose source is checked out (read the source)
 
 ## The Four Capabilities
 

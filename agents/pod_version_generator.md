@@ -1,6 +1,6 @@
 ---
 name: pod_version_generator
-description: 通用 CocoaPods 组件发版 agent。适用于任何用 Podfile 管理依赖的 iOS 工程——为 Podfile 中以 :git + :commit 接入、且 podspec 发布在某个私有 podspec 仓库(Specs repo)的组件库生成并发布新版本。支持同时管理多个 podspec 仓库，内置默认 miwbluetoothrepo，后续新增其他 Specs 仓库在 PODSPEC_REPOS 追加名字即可。流程——解析 Podfile 找出 commit 接入的库 → 在本地源码仓库按"最高版本 tag +1"打新 tag → 把 Podfile commit 合并到发布分支并在 README 追加"更新记录"段（内容为 上一个tag..Podfilecommit 范围的改动，绝不删原内容）→ 把 tag 移到含 README 的最终分支 HEAD → 在各 podspec 仓库生成新版本 podspec → 校验 podspec source URL 可达性 → (发布模式) push tag+分支与 podspec。Dispatch 触发："pod 版本生成" / "组件发新版" / "给 commit 接入的库打 tag 发版" 等。必须提供 SOURCE_REPOS_DIR（本地源码仓库根目录）；PODSPEC_REPOS 默认 miwbluetoothrepo。支持模式：准备（默认，仅本地不 push）/ 发布（含 push）。可在 dispatch prompt 传入 exclude 列表跳过指定库、release_branch 指定发布分支（默认自动检测 master/main）。
+description: 通用 CocoaPods 组件发版 agent。适用于任何用 Podfile 管理依赖的 iOS 工程——为 Podfile 中以 :git + :commit 接入、且 podspec 发布在某个私有 podspec 仓库(Specs repo)的组件库生成并发布新版本。支持同时管理多个 podspec 仓库；PODSPEC_REPOS 由 dispatch 指定（无内置默认），后续新增 Specs 仓库在 PODSPEC_REPOS 追加名字即可。流程——解析 Podfile 找出 commit 接入的库 → 在本地源码仓库按"最高版本 tag +1"打新 tag → 把 Podfile commit 合并到发布分支并在 README 追加"更新记录"段（内容为 上一个tag..Podfilecommit 范围的改动，绝不删原内容）→ 把 tag 移到含 README 的最终分支 HEAD → 在各 podspec 仓库生成新版本 podspec → 校验 podspec source URL 可达性 → (发布模式) push tag+分支与 podspec。Dispatch 触发："pod 版本生成" / "组件发新版" / "给 commit 接入的库打 tag 发版" 等。必须提供 SOURCE_REPOS_DIR（本地源码仓库根目录）与 PODSPEC_REPOS（要发版的 podspec 仓库列表，无内置默认）。支持模式：准备（默认，仅本地不 push）/ 发布（含 push）。可在 dispatch prompt 传入 exclude 列表跳过指定库、release_branch 指定发布分支（默认自动检测 master/main）。
 model: inherit
 ---
 
@@ -9,7 +9,7 @@ model: inherit
 # 参数（dispatch 传入）
 - `PODFILE`：Podfile 路径，默认当前工作目录下 `Podfile`。
 - `SOURCE_REPOS_DIR`：**必填**。本地各组件源码仓库的根目录，每个组件是其下一个子目录（目录名通常 = 源码 git URL 末段去掉 `.git`）。
-- `PODSPEC_REPOS`：要管理的 podspec 仓库列表，逗号分隔。内置默认 `miwbluetoothrepo`。每项可写 `name`（路径解析为 `$SOURCE_REPOS_DIR/<name>`）或 `name=path`（显式路径）。**后续新增其他 Specs 仓库时，在此追加名字即可**，agent 会自动对每个仓库做"是否管理该 pod"的判断与发版。示例：`miwbluetoothrepo` 或 `miwbluetoothrepo,miwearpodlib=/path/to/miwearpodlib`。
+- `PODSPEC_REPOS`：**必填**，要管理的 podspec 仓库列表，逗号分隔（无内置默认）。每项可写 `name`（路径解析为 `$SOURCE_REPOS_DIR/<name>`）或 `name=path`（显式路径）。**后续新增 Specs 仓库时，在此追加名字即可**，agent 会自动对每个仓库做"是否管理该 pod"的判断与发版。示例：`myrepo` 或 `myrepo,otherrepo=/path/to/otherrepo`。
 - `release_branch`：发布分支，默认自动检测（优先 `master`，其次 `main`，再退回当前分支）。也可 dispatch 显式指定。
 - `exclude`：本次跳过的库列表（如 dispatch 写 `exclude: SomePod, AnotherPod`）。
 - `mode`：`准备`（默认，全程不 push）/ `发布`（最后 push tag+分支+podspec）。
@@ -27,7 +27,7 @@ model: inherit
 1. **README 只追加，不覆盖**：追加 `## 更新记录` 段，绝不改动/删除原文任何内容。若仓库原本无 README，新建时也只写"更新记录"段，不要凭空编造项目描述。用 `cat >>` 追加；若需重建，先 `git show <README提交前的commit>:README.md` 恢复原文再追加。
 2. **更新记录内容范围 = `上一个tag..Podfilecommit`**，不是当前分支、不是移动后的 tag。用 `git log <上一个tag>..<Podfilecommit>` 取提交，按特性/工单去重合并（merge commit 跳过），每条一句话。范围要覆盖完整，不得漏项。
 3. **tag 必须指向含 README 的最终分支 HEAD**：先合并到发布分支 → 追加 README 并 commit → 再 `git tag -f <newtag> <release_branch>` 把 tag 移到该 commit。这样 tag 包含全部操作（源码合并 + README）。
-4. **新 tag = 最高版本 tag +1，且位数格式对齐**：只看纯版本 tag（正则 `^[0-9]+\.[0-9]+\.[0-9]+$`），忽略 `wear_3.50.0`/`xcode26` 等非版本 tag。patch 段位数沿用历史（`1.0.04`→`1.0.05`，不是 `1.0.5`；`1.0.00`→`1.0.01`）。新 tag 创建前必须确认不存在。
+4. **新 tag = 最高版本 tag +1，且位数格式对齐**：只看纯版本 tag（正则 `^[0-9]+\.[0-9]+\.[0-9]+$`），忽略 `dev_3.50.0`/`xcode26` 等非版本 tag。patch 段位数沿用历史（`1.0.04`→`1.0.05`，不是 `1.0.5`；`1.0.00`→`1.0.01`）。新 tag 创建前必须确认不存在。
 5. **过滤口径 = "podspec 仓库里有该库目录"**：以 `:commit` 接入的 pod，遍历 `PODSPEC_REPOS` 中每个仓库，只要某个仓库 `$repo/<PodName>/` 存在，就视为"由该仓库管理"，对该仓库生成/发布 podspec。一个 pod 可能被多个仓库管理（在各仓库分别生成）。**不要按 git URL 的组名/namespace 过滤**——组件源码 git 可能在任意 namespace 下。
 6. **podspec source URL 可达性校验**：生成 podspec 后，比对 podspec 声明的 `:git` 与本地源码仓库实际 `origin`。若两者不同，用 `git ls-remote --tags <podspec的git URL>` 验可达性。若 podspec 的 URL 不可达（仓库不存在/无权限），**必须停下来问用户**：修正 URL 为本地 origin / 保持原样 / 跳过该 podspec。不得静默发布失效 podspec。
 7. **subspec 去重**：多个 subspec 共用同一 git+commit（如 `Pod/SubA`、`Pod/SubB` 同一仓库同一 commit）只算一个仓库、打一个 tag、生成一个 podspec。
@@ -43,7 +43,7 @@ model: inherit
 读 `PODFILE`，抓取所有形如 `pod 'X'[, '/sub'], :git => '<url>', :commit => '<sha>'` 的行。输出元组列表：`(PodName, subspec|null, git_url, commit_sha)`。按 git_url+commit_sha 去重（subspec 合并）。注释行（`#`）跳过。`:tag`/`:branch`/版本号接入的库不纳入。
 
 ## Step 2 — 解析 podspec 仓库 + 过滤出管理的库
-1. 解析 `PODSPEC_REPOS`（默认 `miwbluetoothrepo`）：每项 `name` → 路径 `$SOURCE_REPOS_DIR/<name>`；`name=path` → 显式 path。确认每个仓库目录存在且是 git 仓库。
+1. 解析 `PODSPEC_REPOS`（dispatch 提供，无内置默认）：每项 `name` → 路径 `$SOURCE_REPOS_DIR/<name>`；`name=path` → 显式 path。确认每个仓库目录存在且是 git 仓库。
 2. 对 Step 1 每个库，遍历所有 podspec 仓库，记录"管理该 pod 的仓库列表"（`$repo/<PodName>/` 存在即纳入）。没有任何仓库管理的库 → 排除。再剔除 `exclude` 列表中的库。
 3. 输出：每个待处理库 → `(PodName, git_url, commit_sha, prevtag, newtag, [管理它的 podspec 仓库...])`。
 
