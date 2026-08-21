@@ -23,8 +23,9 @@
 - **规则**：带飞书 URL 时仅用 `feishu` skill fetch，禁止 `WebFetch`；创建 / 修改走 feishu CLI。
 
 ### program-coder
-- **触发**：给定 Swift 源文件路径，要求「整理格式 / format / clean up」。
-- **规则**：纯格式化（空白 / 换行 / 注释 / 缩进 / 冒号 / 签名对齐 / 访问控制顺序），不改逻辑。
+- **触发**：给定 Swift 源文件路径 + 代码编辑需求（改逻辑 / 加功能 / 删代码 / 重构 / 整理格式 / format / clean up）。
+- **规则**：编辑代码（按需求改逻辑 / 新增 / 删除 / 重构）+ 代码风格归一化（空白 / 换行 / 注释 / 缩进 / 冒号 / 签名对齐 / 访问控制顺序，按代码库测量多数风格）。标识符 / 字符串字面量 / `#if` 条件 / 注释语言不擅自改（除非需求要求）；最小 diff。
+- **强制**：修改 Swift 代码（改逻辑 / 加功能 / 删代码 / 重构）时，**必须使用 /program-coder**（编辑代码 + 格式化），不论场景——手动 Edit、jira_fix_single、business_migration 或任何其他改码。不得直接 Edit 改 Swift 代码后不调 program-coder。
 
 ### mail-attachment
 - **触发**：mail.xiaomi.com（OWA）URL 或「搜邮件 + 下载附件 / 拿下载地址 / symbol zip / dSYM 下载地址」/ 需要邮件里某个文件（dSYM / symbol / 日志 zip）的下载链接。
@@ -35,7 +36,7 @@
 以下 agent 是通用能力，跨项目可用。遇到对应场景**优先用 Agent 工具 dispatch 对应 agent**，在 prompt 里指定模式 / 必要参数：
 
 ### jira_fix_single
-- **触发**：单个 Jira bug 的修复 / 分析 / 端到端处理（读单 + 分析日志和调用栈 + **崩溃 `.ips` 符号化（dSYM 经 `mail-attachment` 从 CI 邮件取）** + 改码（修复后用 `program-coder` 纯格式化）+ 飞书自测报告 + 推独立分支 + Jira 评论）。
+- **触发**：单个 Jira bug 的修复 / 分析 / 端到端处理（读单 + 分析日志和调用栈 + **崩溃 `.ips` 符号化（dSYM 经 `mail-attachment` 从 CI 邮件取）** + 改码用 `program-coder`（编辑代码逻辑 + 格式化）+ 飞书自测报告 + 推独立分支 + Jira 评论）。
 - **模式**：`仅分析` / `仅修复` / `完整`（默认），dispatch prompt 里写明。
 - **规则**：分析 / 修复 / 端到端处理单个 Jira bug（含 Jira URL）**直接派 `jira_fix_single`**，agent 内部自走读单 + 下载附件 + `.ips` 符号化 + 调用栈分析（caller **不必先调 `jira-attachments` skill**）；仅读单 / 拉附件（不分析、不修复）才走 `jira-attachments` skill，不派 agent。从**当前工作分支**切独立 fix 分支，不从其他集成分支切（避免夹带分叉冲突）。
 
