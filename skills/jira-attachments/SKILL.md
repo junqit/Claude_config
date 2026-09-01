@@ -16,7 +16,7 @@ Read a Jira ticket's full information and download all its attachments (logs, zi
 
 ## Inputs (from caller)
 
-**Per-issue download directory (`<ISSUE_DIR>`)** — provided by the caller (e.g. the `jira_fix_single` agent) as the location to download + extract all attachments for this issue. The skill **receives** this directory and uses it for every download / extract / verify step below; it does **not** pick its own location when a caller path is given. **If no download directory is received** (standalone invocation with no caller path — e.g. a direct "下载 Jira 附件" trigger not coming from an agent), the skill defaults `<ISSUE_DIR>` to `~/Downloads/Skill/jira-attachments/<ISSUE_KEY>/` — base `~/Downloads/Skill/<skill-name>/` + a per-issue `<ISSUE_KEY>` subdir (never flat, to honor the one-dir-per-issue rule in 3.1).
+**Per-issue download directory (`<ISSUE_DIR>`)** — provided by the caller (e.g. the `jira_fix_single` agent) as the location to download + extract all attachments for this issue. The skill **receives** this directory and uses it for every download / extract / verify step below; it does **not** pick its own location when a caller path is given. **If no download directory is received** (standalone invocation with no caller path — e.g. a direct "下载 Jira 附件" trigger not coming from an agent), the skill defaults `<ISSUE_DIR>` to `~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/` — **与 `jira_fix_single` agent 的附件存储目录完全一致**（agent 生成并传入的也是 `~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/`），确保「agent 存、skill 取」永远落在同一目录，不脱节。one per-issue `<ISSUE_KEY>` subdir (never flat, to honor the one-dir-per-issue rule in 3.1).
 
 ## Step 1 — Parse issue key + pick MCP server by host
 
@@ -43,7 +43,7 @@ For `jira.n.xiaomi.com`: `mcp__old-mi-jira__jira_issue_get_tool(issue_key=<KEY>)
 ## Step 3 — Download attachments (primary: MCP for jira-phone)
 
 ### 3.1 Attachment directory rule (mandatory)
-All attachments download/extract to **one dir per issue** = `<ISSUE_DIR>` (the caller-provided download directory; defaults to `~/Downloads/Skill/jira-attachments/<ISSUE_KEY>/` when no caller path is given). Never use `~/Downloads/` root, `/tmp`, the tool-results cache dir, or project dir. Final dir holds only attachment files + extracted products — no blob/CAS-HTML leftovers.
+All attachments download/extract to **one dir per issue** = `<ISSUE_DIR>` (the caller-provided download directory; defaults to `~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/` when no caller path is given — 与 `jira_fix_single` agent 一致). Never use `~/Downloads/` root, `/tmp`, the tool-results cache dir, or project dir. Final dir holds only attachment files + extracted products — no blob/CAS-HTML leftovers.
 
 ### 3.2 Get attachment manifest
 ```

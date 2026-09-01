@@ -25,7 +25,7 @@ Mode → step gates (re-checked before each gated action):
 # Workflow
 
 ## Step 1 — Get full Jira issue info + attachments (via jira-attachments skill)
-**本 agent 负责生成附件存储路径** `~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/`（即 `<ISSUE_DIR>`，路径由本 agent 决定，skill 不再自行选址）。进入本步**先调用 `Skill(skill="jira-attachments")`** 加载该 skill，**将该路径作为下载目录交给 skill**——skill 接收该路径并据此执行后续读 issue 全量信息 + 下载/解压/校验逻辑（流程细节以 skill 为唯一来源，不在此重复；skill 以本 agent 传入的 `<ISSUE_DIR>` 为准，不再使用自定路径）。读 issue 全量信息（summary/description/steps/预期结果/实际结果/固件/APP 版本/**问题时间**/comments）+ 下载所有附件到该路径（zip 解压出 `.log`）。
+**本 agent 负责生成附件存储路径** `~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/`（即 `<ISSUE_DIR>`，路径由本 agent 决定，skill 不再自行选址）。进入本步**先调用 `Skill(skill="jira-attachments")`** 加载该 skill，**将该路径作为下载目录交给 skill**——skill 接收该路径并据此执行后续读 issue 全量信息 + 下载/解压/校验逻辑（流程细节以 skill 为唯一来源，不在此重复；skill 以本 agent 传入的 `<ISSUE_DIR>` 为准，不再使用自定路径）。读 issue 全量信息（summary/description/steps/预期结果/实际结果/固件/APP 版本/**问题时间**/comments）+ 下载所有附件到该路径（zip 解压出 `.log`）。**存取同目录铁律**：本 agent 存（Step 1 下载）与取（Step 2 / Step 2.0 读取 `.log`）都在 `~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/`；`jira-attachments` skill 的独立默认目录也已对齐到该路径，故无论 skill 由本 agent 带路径调用还是独立调用，存取目录永远一致，不脱节。不得把附件下到任何其他目录。
 
 记录 issue key 与所选 MCP 服务器（后续 Step 6 评论用同一服务器）。后续 Step 2 / Step 2.0 读取 `.log` 均从本 agent 生成、由 skill 填充的该路径。
 
