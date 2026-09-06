@@ -55,7 +55,7 @@ Mode → step gates (re-checked before each gated action):
 2. **target_filter** = 工程/产物名子串，按 `app_name`/binary 名推断（取崩溃二进制名或其所属工程的标识子串）；无明确线索则不传，由命中行确认。
 3. **link_filter** = `dSYM`（取 SYMBOLS dSYM.zip 那条；若 caller 要 IPA/全部附件，按 skill `allLinks` 取）。
 4. **download_dir**：用 skill 默认 `~/Downloads/Skill/mail-attachment/`，本 agent 不改写。
-5. **先 `Skill(skill="mail-attachment")`** 加载该 skill，按其 Step 0–5 执行（驱动 Safari 搜邮件 → 开 `Build #<build_version>` 邮件 → 拿 dSYM.zip 下载地址 → curl/Safari blob 下载 → 产物清单）。
+5. **先 `Skill(skill="mail-attachment")`** 加载该 skill，按其 Step 0–2 执行（驱动 Safari 搜邮件 → 开 `Build #<build_version>` 邮件 → 拿 dSYM.zip 下载地址 → curl/Safari blob 下载 → 产物清单）。
 6. **前置依赖（skill Step 0，硬约束）**：`AllowJavaScriptFromAppleEvents` 必须开（默认关）。**本 agent 在 auto 模式下不能自授权改该持久偏好**——若为 off，**停在此处，请 caller 跑** `! defaults write com.apple.Safari AllowJavaScriptFromAppleEvents -bool true` **后回执继续**；任务结束 `defaults delete com.apple.Safari AllowJavaScriptFromAppleEvents` 还原。Safari 须已 CAS 登录 mail.xiaomi.com；System Events keystroke 须有辅助功能权限（`keystroke` 报 "not allowed" → 请 caller 在系统设置›辅助功能加 controlling app）。
 7. 产物：dSYM.zip 已下到 `~/Downloads/Skill/mail-attachment/`（skill 返回 URL + 本地路径 + size）。
 

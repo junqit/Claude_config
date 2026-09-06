@@ -1,6 +1,6 @@
 ---
 name: mail-attachment
-description: Use when you need to search Xiaomi OWA mail (mail.xiaomi.com) by keyword and download email attachments or extract their download links — given a mail URL / search keyword, or a request like "搜邮件 Build #<N> 拿 symbol zip 下载地址 / 附件". Triggered by mail.xiaomi.com URLs, "搜索邮件 + 下载附件 / 拿下载地址", CI build-notification emails, or needing a file (dSYM / symbol / log zip) whose download link is inside a mail. Drives the logged-in Safari session; intranet-direct hosts curl, CAS-protected hosts blob-fetch.
+description: Use when you need to FETCH information from Xiaomi OWA (mail.xiaomi.com): search mail by keyword and DOWNLOAD attachments (zips, dSYMs, logs, images, videos), or EXTRACT attachment download links. Only for an actual fetch/download/extract task — a search keyword + download intent, a mail URL whose attachments or links you must retrieve, or "搜邮件 + 下载附件 / 拿下载地址". Do NOT use to merely READ a mail body, when a mail URL is shared only as context, or just because dSYM/symbol/CI-build is mentioned without a search+download task to perform.
 ---
 
 # Mail Attachment Search & Download
@@ -8,11 +8,17 @@ description: Use when you need to search Xiaomi OWA mail (mail.xiaomi.com) by ke
 Search Xiaomi OWA (`mail.xiaomi.com`) by keyword, open the matching emails, extract attachment / download links, and download the files to a storage path — or return the download URLs. **Safari holds the live CAS-SSO session**; OWA's React combobox ignores synthetic JS events, so the search query is typed with **real keystrokes via System Events** (trusted events). `curl` works for intranet-direct (FDS / object-storage) hosts; CAS-protected hosts need a same-origin Safari blob fetch. Solves the real traps: the `isTrusted` wall on synthetic Enter, AppleScript string-escaping breakage, the virtualized result list, OWA's loose keyword match, and the curl-vs-CAS decision.
 
 ## When to Use
-- Given a mail URL or search keyword, need to download mail attachments (zips, dSYMs, logs, images, videos).
-- Need the download URL of a file whose link is inside a CI / build-notification email.
-- Another skill/agent needs a mail's attachments fed into it locally.
+**Use ONLY for an actual mail-fetch task** — searching OWA by keyword and downloading attachments, or extracting their download links.
 
-**When NOT to use:** you only need to *read* a mail's text inline. This skill is for *searching + downloading* attachments/links, not reading mail bodies.
+- A search keyword **with intent to download** mail attachments (zips, dSYMs, logs, images, videos) or get their download URLs.
+- A `mail.xiaomi.com` URL **plus** a need to download its attachments / extract its links — not just to read it.
+- Another skill/agent needs a mail's attachments fed in locally (e.g. `jira_fix_single` fetching a dSYM from a CI build-notification email).
+
+## When NOT to use
+- You only need to **read** a mail's body text inline — this skill searches + downloads, it does not read mail bodies.
+- A `mail.xiaomi.com` URL is shared **only as context/reading** — no download or link-extraction task.
+- `dSYM` / `symbol` / `CI build #<N>` is mentioned but there is **no actual mail search + download** to perform — the mention alone is not a trigger.
+- You already hold the download URL and just need to fetch a public/intranet-direct file — `curl` it directly; this skill is for *finding* the link inside mail, not generic downloading.
 
 ## Inputs
 - `keyword` *(required)*: OWA search query. To find an exact token like a CI build number `Build #<N>`, pass the **distinctive bare token** (the bare number) — OWA does loose keyword matching, so the skill scans each result's `innerText` for the exact string. A full phrase matches only loosely.
@@ -30,7 +36,11 @@ Search Xiaomi OWA (`mail.xiaomi.com`) by keyword, open the matching emails, extr
    **Restore after the task:** `defaults delete com.apple.Safari AllowJavaScriptFromAppleEvents`.
 3. **Accessibility** for System Events keystrokes: the controlling app (Terminal / Claude Code) must be in *System Settings › Privacy & Security › Accessibility*, else `keystroke` errors "not allowed to send keystrokes". If it errors, tell the user to add the app and re-run.
 
-## Step 1 — Locate / open the mail tab + drive the search (real keystrokes)
+## Step 1 — 通过 Safari 打开网页：搜索 → 解析 → 开邮件 → 提链 → 下载（端到端）
+
+本步从通过 Safari 打开 mail 网页开始，端到端完成「驱动搜索 → 解析结果 → 打开目标邮件 → 提取下载地址 → 下载到本地」。四个阶段严格串行：1.1–1.4 依次执行，前置依赖见 Step 0。
+
+### 1.1 打开 mail 标签页 + 驱动搜索（真实击键）
 OWA hides the search input behind an `激活搜索文本框` button; the `input[role=combobox]` is revealed only after clicking it. Synthetic `value` + `Enter` is **IGNORED** (`isTrusted:false`) — you MUST type via System Events (trusted) with Safari frontmost.
 
 ```bash
@@ -84,7 +94,7 @@ Replace `KEYWORD_HERE` with the `keyword`. `delay 6` lets OWA fetch results; re-
 
 > **AppleScript escaping rule:** inside a `do JavaScript "..."` string, NEVER use a backslash, a regex (`/\s/`), or a double-quote `"` — they break AppleScript parsing (`-2741`). Use single-quoted JS strings only.
 
-## Step 2 — Parse results (center pane only; virtualized)
+### 1.2 解析搜索结果（仅中心面板；虚拟化列表）
 Result rows are `[role=option]` in the **center pane** (`getBoundingClientRect().left ≥ ~215`); the left folder nav is also `[role=option]` at `x≈0` — **filter by x≥215** or you'll grab the nav tree. The list is **virtualized** (~22 rows/viewport): if the target isn't in the first probe, scroll the scroll container and re-probe, OR narrow the keyword. For an exact token, scan each row's `innerText`.
 
 ```bash
@@ -139,7 +149,7 @@ OASC
 ```
 After scrolling, `delay 1.5` then re-run the parse probe. Repeat until the target appears or the list is exhausted.
 
-## Step 3 — Open the target email + extract download links
+### 1.3 打开目标邮件 + 提取下载链接
 Click the matching `[role=option]` (innerText contains `keyword` + `target_filter`), wait ~4s for the reading pane, then dump `a[href]` and filter candidates.
 
 ```bash
@@ -183,7 +193,7 @@ OASC
 ```
 `candidates` = links matching archive/package/symbol/dSYM/artifact/download extensions (`.zip .ipa .apk` …). `allLinks` = every `a[href]` — **use `allLinks` when the caller asked for ALL attachments/addresses**, since the candidate filter may miss an extension (e.g. `.ipa` was missed before the filter was widened). Each link is `{t: linkText, h: url}`. Apply `link_filter` to pick which to download.
 
-## Step 4 — Download (curl first, Safari blob-fetch on CAS)
+### 1.4 下载（先 curl，CAS 站走 Safari blob fetch）
 1. **Try `curl -sSL` first** — FDS / intranet-direct object-storage hosts return `200` + real bytes, no CAS:
    ```bash
    mkdir -p "DOWNLOAD_DIR"
@@ -191,7 +201,7 @@ OASC
      -w "http=%{http_code} size=%{size_download} type=%{content_type}\n" "URL"
    file "DOWNLOAD_DIR/FILENAME"   # must be the real archive, not ~4KB HTML
    ```
-   If `http=200`, `size>0`, and `file` reports the expected archive type → done. A ~4KB `HTML document` = CAS interception → fall back to step 2.
+   If `http=200`, `size>0`, and `file` reports the expected archive type → done. A ~4KB `HTML document` = CAS interception → fall back to the Safari blob fetch below (item 2).
 2. **CAS-protected host → Safari same-origin blob fetch** (the tab is on `mail.xiaomi.com`, so `credentials:'include'` sends the session cookies; `anchor.download` forces a save with the chosen filename):
    ```bash
    osascript <<'OASC'
@@ -211,7 +221,7 @@ OASC
    ```
    Safari saves to `~/Downloads/`; poll by byte size, then `mv` to `DOWNLOAD_DIR/FILENAME`. Verify `wc -c` matches any known size.
 
-## Step 5 — Output to caller
+## Step 2 — Output to caller
 - Downloaded files in `download_dir` (default `~/Downloads/Skill/mail-attachment/`).
 - A manifest: `[{filename, url, local_path, size}]`.
 - Report any attachment/link that failed to download **explicitly** — never silently skip, never fabricate a download.
@@ -231,7 +241,7 @@ OASC
 | Read a ~4KB CAS HTML as "download failed" | It's the CAS interception page. Use the Safari blob fetch, not curl. |
 | Name the `do JavaScript` result var `rd` | AppleScript tokenizes `rd` specially → `-2741` at that var. Use `r` / `clk` / `res`. (`r`/`clk`/`prep` are fine; only `rd` is cursed — verified in practice.) |
 | Candidate filter misses a package link (`.ipa`/`.apk`) | The `candidates` filter targets archive/symbol/dSYM/artifact/download. For "ALL attachments/addresses" use `allLinks`; the filter now also includes `.ipa`/`.apk`. |
-| Click + read in ONE osascript block (two `do JavaScript`) | If it errors, split into two osascript calls (one `do JavaScript` each) — proven reliable. Step 3 is already written that way. |
+| Click + read in ONE osascript block (two `do JavaScript`) | If it errors, split into two osascript calls (one `do JavaScript` each) — proven reliable. §1.3 is already written that way. |
 
 ## Worked example — dSYM via intranet-direct host (curl path)
 Inputs: `keyword=<build_number>`, `target_filter=<client/job substring>`, `link_filter=dSYM`. `download_dir` defaulted to `~/Downloads/Skill/mail-attachment/`.

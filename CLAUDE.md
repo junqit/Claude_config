@@ -28,7 +28,7 @@
 - **强制**：修改 Swift 代码（改逻辑 / 加功能 / 删代码 / 重构）时，**必须使用 /program-coder**（编辑代码 + 格式化），不论场景——手动 Edit、jira_fix_single、business_migration 或任何其他改码。不得直接 Edit 改 Swift 代码后不调 program-coder。
 
 ### mail-attachment
-- **触发**：mail.xiaomi.com（OWA）URL 或「搜邮件 + 下载附件 / 拿下载地址 / symbol zip / dSYM 下载地址」/ 需要邮件里某个文件（dSYM / symbol / 日志 zip）的下载链接。
+- **触发**：**仅当需要抓取 mail 信息时**——搜邮件 + 下载附件 / 拿下载地址（symbol zip / dSYM 等）/ 需要邮件里某文件（dSYM / symbol / 日志 zip）的下载链接。`mail.xiaomi.com` URL 只有在要下载附件 / 提取链接时才触发；仅阅读邮件正文、URL 仅作上下文、或仅提及 dSYM/symbol/CI 构建号而无实际搜邮件+下载任务时，**不触发**。
 - **规则**：先调 `mail-attachment` 驱动已登录的 Safari 搜邮件 + 拿附件 / 下载地址；内网直链（FDS 等）用 curl，CAS 站走 Safari 同源 blob fetch；不直接 WebFetch / 裸 curl 绕过。
 
 ## 自定义 Agent 派发优先级（~/.claude/agents）
@@ -47,3 +47,8 @@
 ### pod_version_generator
 - **触发**：「pod 版本生成 / 组件发新版 / 给 commit 接入的库打 tag 发版」。
 - **规则**：dispatch `pod_version_generator`，**必须提供 SOURCE_REPOS_DIR 与 PODSPEC_REPOS**（podspec 仓库列表，无内置默认）。模式：`准备`（默认）/ `发布`（含 push）。
+
+### miwear-ufi-anaylytic
+- **触发**：「拉反馈日志 / 下载反馈日志并解密 / 反馈查找→日志下载→解密 / miwear-ufi」（可带应用版本号 / 具体问题 / 反馈平台，均可选）。
+- **参数**（**全部可选，可不传**）：`appVersion` 应用版本号、`issue` 具体问题名或 tagId、`platform` 反馈平台（默认 `wear`）、`pageSize` 每页条目数（默认 `100`）、`feedbackId` 反馈编号（单条模式，跳过列表只下该条）。不传 `appVersion`/`issue` 则该维度不过滤（更宽查询）；完全不传 = 拉 wear 平台最新 100 条反馈。
+- **规则**：dispatch `miwear-ufi-anaylytic`，从 feedback.pt.xiaomi.com 按版本+问题+平台拉**全量列**反馈列表存 manifest.tsv → 逐条下载日志（logDownloadBox 页面加载自动下载，文件夹改名为反馈编号，**不点「下载所有」按钮**——合成 click 会导航到脱敏坏 URL）→ 逆向解密工具客户端 AES（key 经 `/log/decrypt/wear/decryptLogKeys` 同源 POST 取，本地 node AES-256-CBC/IV=`A-16-Byte-String`/分块格式解密，解密文件放 `decrypted/` 子目录）→ 递归处理打包压缩包内嵌套加密日志至不动点。前置：Safari 登录 feedback.pt + `AllowJavaScriptFromAppleEvents` ON（agent 不能自开，caller 手动 `! defaults write com.apple.Safari AllowJavaScriptFromAppleEvents -bool true`；任务结束 agent 自动 `defaults delete` 还原）。**只采集+解密，不分析日志内容、不改码、不 commit**（分析交给 `ufi-analytic` / `jira_fix_single`）。
