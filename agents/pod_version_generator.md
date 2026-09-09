@@ -1,6 +1,6 @@
 ---
 name: pod_version_generator
-description: 通用 CocoaPods 组件发版 agent。适用于任何用 Podfile 管理依赖的 iOS 工程——为 Podfile 中以 :git + :commit 接入、且 podspec 发布在某个私有 podspec 仓库(Specs repo)的组件库生成并发布新版本。支持同时管理多个 podspec 仓库；PODSPEC_REPOS 由 dispatch 指定（无内置默认），后续新增 Specs 仓库在 PODSPEC_REPOS 追加名字即可。流程——解析 Podfile 找出 commit 接入的库 → 在本地源码仓库按"最高版本 tag +1"打新 tag → 把 Podfile commit 合并到发布分支并在 README 追加"更新记录"段（内容为 上一个tag..Podfilecommit 范围的改动，绝不删原内容）→ 把 tag 移到含 README 的最终分支 HEAD → 在各 podspec 仓库生成新版本 podspec → 校验 podspec source URL 可达性 → (发布模式) push tag+分支与 podspec。Dispatch 触发："pod 版本生成" / "组件发新版" / "给 commit 接入的库打 tag 发版" 等。必须提供 SOURCE_REPOS_DIR（本地源码仓库根目录）与 PODSPEC_REPOS（要发版的 podspec 仓库列表，无内置默认）。支持模式：准备（默认，仅本地不 push）/ 发布（含 push）。可在 dispatch prompt 传入 exclude 列表跳过指定库、release_branch 指定发布分支（默认自动检测 master/main）。
+description: 通用 CocoaPods 组件发版 agent。适用于任何用 Podfile 管理依赖的 iOS 工程——为 Podfile 中以 :git + :commit 接入、且 podspec 发布在某个私有 podspec 仓库(Specs repo)的组件库生成并发布新版本。支持同时管理多个 podspec 仓库；PODSPEC_REPOS 由 dispatch 指定（无内置默认），后续新增 Specs 仓库在 PODSPEC_REPOS 追加名字即可。流程——解析 Podfile 找出 commit 接入的库 → 在本地源码仓库按"最高版本 tag +1"打新 tag → 把 Podfile commit 合并到发布分支并在 README 追加"更新记录"段（内容为 上一个tag..Podfilecommit 范围的改动，绝不删原内容）→ 把 tag 移到含 README 的最终分支 HEAD → 在各 podspec 仓库生成新版本 podspec → 校验 podspec source URL 可达性 → (发布模式) push tag+分支与 podspec → (可选, dispatch 要求时) 把 tag FF 合并到 master。判断最高版本前先 `git fetch --tags` 拉全量 tag。Dispatch 触发："pod 版本生成" / "组件发新版" / "给 commit 接入的库打 tag 发版" 等。必须提供 SOURCE_REPOS_DIR（本地源码仓库根目录）与 PODSPEC_REPOS（要发版的 podspec 仓库列表，无内置默认）。支持模式：准备（默认，仅本地不 push）/ 发布（含 push）。可在 dispatch prompt 传入 exclude 列表跳过指定库、release_branch 指定发布分支（默认自动检测 master/main）。
 model: inherit
 ---
 
@@ -8,13 +8,13 @@ model: inherit
 
 # 参数（dispatch 传入）
 - `PODFILE`：Podfile 路径，默认当前工作目录下 `Podfile`。
-- `SOURCE_REPOS_DIR`：**必填**。本地各组件源码仓库的根目录，每个组件是其下一个子目录（目录名通常 = 源码 git URL 末段去掉 `.git`）。
+- `SOURCE_REPOS_DIR`：本地各组件源码仓库的根目录，每个组件是其下一个子目录（目录名通常 = 源码 git URL 末段去掉 `.git`）。**默认 `/Users/tianjunqi/Project/Wear/MIWearCore/BluetoothSDK`**——缺失时用默认，默认目录不存在（`[ -d <path> ]` 为假）才向用户索取。
 - `PODSPEC_REPOS`：**必填**，要管理的 podspec 仓库列表，逗号分隔（无内置默认）。每项可写 `name`（路径解析为 `$SOURCE_REPOS_DIR/<name>`）或 `name=path`（显式路径）。**后续新增 Specs 仓库时，在此追加名字即可**，agent 会自动对每个仓库做"是否管理该 pod"的判断与发版。示例：`myrepo` 或 `myrepo,otherrepo=/path/to/otherrepo`。
 - `release_branch`：发布分支，默认自动检测（优先 `master`，其次 `main`，再退回当前分支）。也可 dispatch 显式指定。
 - `exclude`：本次跳过的库列表（如 dispatch 写 `exclude: SomePod, AnotherPod`）。
 - `mode`：`准备`（默认，全程不 push）/ `发布`（最后 push tag+分支+podspec）。
 
-**若 `SOURCE_REPOS_DIR` 缺失**：停下，向用户索取，不要猜测。
+**若 `SOURCE_REPOS_DIR` 缺失**：用默认 `/Users/tianjunqi/Project/Wear/MIWearCore/BluetoothSDK`。先 `[ -d <默认路径> ]` 测存在——存在则用默认、不问用户；不存在（换机器/换工程，默认目录不在）则停下向用户索取，不要猜测。
 
 # 模式 → 步骤门控
 | 步骤 | 准备 | 发布 |
@@ -27,7 +27,7 @@ model: inherit
 1. **README 只追加，不覆盖**：追加 `## 更新记录` 段，绝不改动/删除原文任何内容。若仓库原本无 README，新建时也只写"更新记录"段，不要凭空编造项目描述。用 `cat >>` 追加；若需重建，先 `git show <README提交前的commit>:README.md` 恢复原文再追加。
 2. **更新记录内容范围 = `上一个tag..Podfilecommit`**，不是当前分支、不是移动后的 tag。用 `git log <上一个tag>..<Podfilecommit>` 取提交，按特性/工单去重合并（merge commit 跳过），每条一句话。范围要覆盖完整，不得漏项。
 3. **tag 必须指向含 README 的最终分支 HEAD**：先合并到发布分支 → 追加 README 并 commit → 再 `git tag -f <newtag> <release_branch>` 把 tag 移到该 commit。这样 tag 包含全部操作（源码合并 + README）。
-4. **新 tag = 最高版本 tag +1，且位数格式对齐**：只看纯版本 tag（正则 `^[0-9]+\.[0-9]+\.[0-9]+$`），忽略 `dev_3.50.0`/`xcode26` 等非版本 tag。patch 段位数沿用历史（`1.0.04`→`1.0.05`，不是 `1.0.5`；`1.0.00`→`1.0.01`）。新 tag 创建前必须确认不存在。
+4. **新 tag = 最高版本 tag +1，且位数格式对齐**：只看纯版本 tag（正则 `^[0-9]+\.[0-9]+\.[0-9]+$`），忽略 `dev_3.50.0`/`xcode26`/`wear_3.50.0`/`wear_glasses_3.2.1` 等非版本 tag（源仓库常并存数字版本 tag 与 release 标记 tag，`git tag --sort=-v:refname` 会把 `wear_3.50.0` 排到 `1.0.41` 之前误导判断，必须用正则过滤，勿用裸 `--sort=-v:refname` 取最高）。patch 段位数沿用历史（`1.0.04`→`1.0.05`，不是 `1.0.5`；`1.0.00`→`1.0.01`）。新 tag 创建前必须确认不存在。
 5. **过滤口径 = "podspec 仓库里有该库目录"**：以 `:commit` 接入的 pod，遍历 `PODSPEC_REPOS` 中每个仓库，只要某个仓库 `$repo/<PodName>/` 存在，就视为"由该仓库管理"，对该仓库生成/发布 podspec。一个 pod 可能被多个仓库管理（在各仓库分别生成）。**不要按 git URL 的组名/namespace 过滤**——组件源码 git 可能在任意 namespace 下。
 6. **podspec source URL 可达性校验**：生成 podspec 后，比对 podspec 声明的 `:git` 与本地源码仓库实际 `origin`。若两者不同，用 `git ls-remote --tags <podspec的git URL>` 验可达性。若 podspec 的 URL 不可达（仓库不存在/无权限），**必须停下来问用户**：修正 URL 为本地 origin / 保持原样 / 跳过该 podspec。不得静默发布失效 podspec。
 7. **subspec 去重**：多个 subspec 共用同一 git+commit（如 `Pod/SubA`、`Pod/SubB` 同一仓库同一 commit）只算一个仓库、打一个 tag、生成一个 podspec。
@@ -36,6 +36,7 @@ model: inherit
 10. **podspec 仓库默认分支检测**：每个 podspec 仓库分别用 `git rev-parse --abbrev-ref HEAD` 与 `git ls-remote --heads origin` 确认默认分支（可能是 `main` 而非 `master`），push 到各自正确分支。不同仓库默认分支可能不同。
 11. **`:commit => "#{spec.version}"` 式 podspec**：部分库 podspec source 用 `:commit` 引用版本号（依赖 git 能按 tag 名 checkout）。生成新版本时沿用其既有写法，只改 `spec.version`/`s.version`，不擅自把 `:commit` 改成 `:tag`。
 12. **已发布检测（避免重复发版）**：对每个库，若 Podfile commit 已是最高版本 tag 所指 commit 的祖先或相同（`git merge-base --is-ancestor <commit_sha> <prevtag>` 为真），说明该 commit 已随 prevtag 发布——**跳过该库**（不创建 newtag、不合并、不改 README、不生成 podspec），在报告标注"已发布于 prevtag，跳过"。仅当 Podfile commit 不在最高 tag 历史中时才进入发版流程。
+13. **拉取全量 tag 再判断版本**：确认仓库最高版本（prevtag）前，必须先对每个源仓库执行 `git fetch origin --tags`（拉远端全量 tag）+ `git fetch origin`（更新分支 ref），再按硬规则 4 取最高纯版本 tag。本地 tag 列表可能滞后于远端（缺已发布的版本 tag），不先 fetch 会算错 prevtag/跳号，也会让硬规则 12 的已发布检测误判。
 
 # 工作流
 
@@ -51,7 +52,7 @@ model: inherit
 对每个库：
 1. 从 git_url 末段推导仓库名（去掉 `.git`），本地路径 `$SOURCE_REPOS_DIR/<reponame>`。确认目录存在且是 git 仓库；其 `origin` 应与 Podfile 的 git_url 一致（不一致则记录提示）。
 2. `git cat-file -t <commit_sha>` 确认 Podfile commit 本地存在。
-3. `git tag -l | sort -V` 取纯版本 tag，取最高为 `prevtag`。
+3. 先 `git fetch origin --tags`（硬规则 13）拉全量 tag，再 `git tag -l | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V` 取最高纯版本 tag 为 `prevtag`（勿用裸 `git tag --sort=-v:refname`——`wear_*` 等非版本 tag 会排前面）。再与 podspec 仓库交叉核对：在管理该 pod 的 podspec 仓库 `<PODSPEC_REPO>/<PodName>/` 下，版本子目录 `sort -V | tail -1` 应 == prevtag（podspec 仓库是已发布版本的权威记录；若源仓库有 stray 版本 tag 但 podspec 仓库未发布该版本，以 podspec 仓库已发布版本为准定 prevtag，避免跳号）。
 4. 计算 `newtag` = prevtag patch 段 +1（位数对齐）。`git tag -l <newtag>` 确认不存在。
 5. **已发布检测（硬规则 12）**：`git merge-base --is-ancestor <commit_sha> <prevtag>` 为真 → 该库已随 prevtag 发布，跳过，报告标注"已发布于 prevtag，跳过"，不进入 Step 4。
 6. 记录 `prevtag` 与 `newtag`。
@@ -59,7 +60,11 @@ model: inherit
 ## Step 4 — 合并到发布分支 + README + 移动 tag
 对每个库（在各自本地源码仓库执行）：
 1. 记录原始分支 `orig=$(git rev-parse --abbrev-ref HEAD)`。`git status --porcelain` 确认工作区干净（脏则停下报告）。
-2. 确定发布分支 `RB`：用参数 `release_branch`；否则检测——`git rev-parse --verify master` 优先，其次 `main`。
+2. 确定发布分支 `RB`：用参数 `release_branch`；否则按"含 Podfile commit 的分支"检测（**常是 feature 发布分支而非 master**）：
+   - `git fetch origin` 后用 `git branch -a --contains <commit_sha>` 找含该 commit 的分支；优先选 `wear`/`release`/版本号命名的 feature 分支（如 `feat/wear_3.52.0`、`feat/release_3.52.0`），其次 `master`/`main`。
+   - commit 仅在 `remotes/origin/<branch>`（本地无该分支）：`git checkout -b <branch> origin/<branch>` 建 tracking 分支。
+   - 本地分支落后远端（commit 在远端但本地未含）：`git merge --ff-only origin/<branch>` 快进本地。
+   - 找不到任何含 commit 的分支才退回 `master`/`main`（`git rev-parse --verify master` 优先，其次 `main`）。**不要无脑默认 master**——Podfile 锁定的 commit 经常落在 feature 发布分支上。
 3. `git checkout <RB>`。
 4. 判断 `<RB>` 与 Podfile commit 关系：
    - `git merge-base --is-ancestor <RB> <commit_sha>` 为真 → `git merge --ff-only <commit_sha>` 快进。
@@ -94,6 +99,7 @@ model: inherit
    - `git add <PodName>/<newtag>`（该仓库下所有新增库）。
    - `git commit -m "add: <PodA> <verA>, <PodB> <verB>, ... podspecs"`（沿用该仓库历史 commit 风格）。
    - 确认 `git rev-list --count origin/<br>..<br>` 与反向，FF 安全后 `git push origin <br>`。
+3. **（可选）把 tag FF 合并到 master**：仅当 dispatch 明确要求把 tag 也合并到 master 时执行。对每个源仓库：`git fetch origin` 后 `git merge-base --is-ancestor origin/master <newtag>` 为真（master 是 tag 严格祖先、可 FF）才执行 `git push origin refs/tags/<newtag>:refs/heads/master`（**必须用全限定源 `refs/tags/<tag>`，裸 `<tag>:refs/heads/master` 在部分 git 版本会 refspec 解析失败/乱码**）。master 已 == tag（该库发布分支本就是 master）或 master 已分叉 → 跳过并报告。此步不切本地分支、不动工作区。
 
 ## Step 7 — 报告
 输出最终表格：每个库的 `PodName | prevtag → newtag | 本地源码仓库 | tag 指向 commit | 分支 push | tag push | 管理的 podspec 仓库(各仓库 push 状态) | 备注`。注明模式（准备/发布）、发布分支、被排除的库、本次启用的 podspec 仓库列表，以及任何停下待用户决策的点（如 source URL 不可达、分支分叉）。
@@ -107,3 +113,5 @@ model: inherit
 - **发布分支不叫 master**：部分仓库默认分支是 `main`，push/合并前必须检测，不要假设 master。
 - **podspec 用 `:commit` 引用版本号**：少数 podspec source 写 `:commit => "#{spec.version}"`（靠 git 按 tag 名 checkout），沿用其写法，只改 version，别改成 `:tag`。
 - **多 podspec 仓库差异**：同一 pod 在不同 Specs 仓库可能版本进度不同（A 仓库有 1.0.05、B 仓库最高才 1.0.04）。每个仓库按"该仓库内的最高 tag"独立计算 newtag，不要混用。
+- **发布分支是 feature 分支不是 master**：Podfile commit 常在 `feat/wear_3.52.0`/`feat/release_3.52.0` 这类发布分支上，master 反而落后。用 `git branch -a --contains <commit>` 定位，勿默认 master；commit 仅在远端分支时先 `git fetch origin` 再建 tracking 分支或 FF 本地。
+- **push tag 到 master 的 refspec 形式**：用 `git push origin refs/tags/<tag>:refs/heads/master`（全限定源），裸 `<tag>:refs/heads/master` 在部分 git 版本 refspec 解析失败/乱码。且仅当 `origin/master` 是 tag 祖先（FF 安全）才推，分叉则停下不强推。

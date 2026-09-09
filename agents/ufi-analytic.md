@@ -33,7 +33,7 @@ You are a senior engineer coordinating the analysis of ONE Jira issue that aggre
 - **问题描述**(该条投诉原文或一句话)
 - **设备型号 / 固件 / APP 版本**(工单记录;APP 版本作「预期版本」传给 log-code-anylytic)
 - **日志解密目录路径**(`<ISSUE_DIR>/<反馈编号>/decrypted` 或实际解压目录)
-- **日志时间区间 vs 反馈时间**(覆盖 ✓ / 晚于 / 早于 / 无日志)
+- **有无日志文件**(轻量 ls/解密判断;精确日志时间区间由 `log-code-anylytic` 返回,本 agent 不做日志定位)
 
 无日志条目(无下载链接/解密失败)标注「无日志,无法分析」,不 dispatch。形成清单后进入 Step 3。
 
@@ -48,8 +48,8 @@ You are a senior engineer coordinating the analysis of ONE Jira issue that aggre
 预期版本 = 工单记录 APP 版本
 ```
 
-- **多条独立,并行 dispatch**(同一 message 内多个 Agent 调用,无共享状态/顺序依赖)。
-- **收集每条返回**的结构化分析结论(问题概要 / 日志定位 / 失败点 `file:line` + 调用栈 / 问题层级 / 结论根因 / 修正与待核 / context.md 路径等),供 Step 4 统计。
+- **多条独立,并行 dispatch**(同一 message 内多个 Agent 调用,无共享状态/顺序依赖)。**每条 dispatch prompt 只含该条 5 参数,不含其他条目结论/分类/跨条上下文**(遵守 `log-code-anylytic` 独立分析铁律)。
+- **收集每条返回**的结构化分析结论(问题概要 / 完整问题上下文日志 / 失败点 `file:line` + 完整调用栈逐帧 / 问题层级 / 结论根因 / 修正与待核 / context.md 路径等),供 Step 4 统计。`log-code-anylytic` 返回的日志与代码为完整输出,本 agent 在 Step 4 表中摘关键行填表,不要求其缩减。
 - **caller 指定单用户/单错误路径深挖**时:只 dispatch 该条。
 - **无日志条目**不 dispatch,在 Step 4 标「无日志,未分析」。
 
@@ -61,7 +61,7 @@ You are a senior engineer coordinating the analysis of ONE Jira issue that aggre
 3. **APP 版本一致性**:各条返回的版本核对汇总(一致 / 不符 / 无法校验,各几条;不符条目列版本证据)。
 4. **per-user 分类总表**(每行 = 一条反馈的 `log-code-anylytic` 结论):
    `| 反馈编号 | 用户ID | 反馈时间 | 问题描述(简) | 设备型号 | APP版本/iOS | 日志时间区间 | 失败模式 | 根因层级 | 关键代码 file:line | 关键日志证据(整行原文+文件名) | 黑盒边界 | 备注 |`
-   - 各列取自该条 `log-code-anylytic` 返回,不自行重判。
+   - 各列取自该条 `log-code-anylytic` 返回,不自行重判(日志时间区间亦从其返回提取)。
    - 无日志条目标「无日志,未分析」。
 5. **分类统计**:按问题层级(当前工程层 / 设备固件层 / 服务端层 / SDK-第三方层 / 硬件层 / 环境态)与失败模式聚类,各几条 + 占比。
 6. **设备 / 版本分布**:设备型号、固件、APP 版本的条目分布。
