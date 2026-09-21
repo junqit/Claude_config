@@ -18,7 +18,7 @@ A file-path-driven Swift code editor + style normalizer with two independent cap
 - **硬约束：添加或修改代码逻辑时，必须同时应用代码风格归一化**。即编辑代码后必须格式化改动的代码，保证新增/修改的代码符合代码风格。不可只编辑代码不格式化。
 - 单独格式化（不改逻辑）允许；单独编辑代码不格式化**禁止**。
 
-This skill does **not** ship a fixed style sheet. Style targets are **discovered by sampling the surrounding code** (sibling `.swift` files in the same module/target) and normalizing to the measured majority. When the codebase is internally inconsistent on a dimension, pick the **measured majority** — never personal preference.
+This skill does **not** ship a fixed style sheet. Style targets are **discovered by sampling the surrounding code** (sibling `.swift` files in the same module/target) and normalizing to the measured majority. When the codebase is internally inconsistent on a dimension, pick the **measured majority** — never personal preference. **写代码必须严格按所采样代码库的既有风格**：命名、模式、API 用法、空白、注释密度与语言、访问控制等一律对齐被采样代码；不得引入个人偏好或代码库未使用的惯例（user-mandated 硬约束，与 minimize-diff 同级优先）。
 
 ## Input
 - **A single file path** (absolute or repo-relative `.swift` file).
@@ -37,46 +37,61 @@ This skill does **not** ship a fixed style sheet. Style targets are **discovered
 
 **触发条件**：仅当 requirement ≠ "format only"（编辑代码：改逻辑 / 加功能 / 删代码 / 重构）时适用。纯格式化**不**触发——添加日志属逻辑变更，禁止在 format-only 流程插入。
 
-**规则**：在本次 requirement 涉及的代码（所编辑的方法 / 区域）内，**所有发生 error 或 return 的地方**，若无日志则补一条日志语句；已有日志不重写（遵守「String literals 不擅自改」+ minimize diff）。
+**规则**：在本次 requirement 涉及的代码（所编辑的方法 / 区域）内，**所有关键 return 与流程分支**都要有日志——含 error 分支、guard/early/normal return，以及 if/else/for/while/guard/switch 中决定成功失败或状态走向的关键控制流分支；若无日志则补一条日志语句；已有日志不重写（遵守「String literals 不擅自改」+ minimize diff）。
 
 **适用点**（不限于此）：
 - `guard … else { return }` 的 guard / early return
 - `catch { … return }` 错误分支
 - `if let error = err { … return }` 失败回调
-- 函数内任意显式 `return`
+- 函数内任意显式 `return`（含正常 return）
 - `throw` / 失败分支
+- 关键控制流分支：`if`/`else if`/`else`/`guard`/`for`/`while`/`switch` 中决定成功失败、状态走向或业务路径分叉的分支（非琐碎判断），在分支入口或关键状态变更处补业务日志
 
 **日志内容：只含业务信息，不含其他信息**
-- ✅ 业务信息：在做什么业务操作、涉及的业务实体（用户 / 设备 / 运动类型 / 记录 / 日期等）、业务结果或状态。例："步数记录解析失败，日期:\(dateString)"。
+- ✅ 业务信息：在做什么业务操作、涉及的业务实体（用户 / 设备 / 运动类型 / 记录 / 日期等）、业务结果或状态。
 - ❌ 其他信息（禁止写入日志）：原始 error 对象 dump（`error.localizedDescription` / `\(error)`）、堆栈 / `Thread.callStackSymbols`、内部类名 / 内存地址 / 框架内部细节、请求 / 响应体、技术调试符号。
 
-**与 minimize-diff / edit-scope 的关系**：本规则为 user-mandated，对"error / return 处补业务日志"这一维度**覆盖** minimize-diff 与 edit-scope 默认——编辑代码时必须给所编辑区域内的 error / return 点补齐业务日志，不得以"减少 diff / 超出请求"为由跳过。其余维度仍守 minimize-diff。
+**与 minimize-diff / edit-scope 的关系**：本规则为 user-mandated，对"关键 return 与流程分支补业务日志"这一维度**覆盖** minimize-diff 与 edit-scope 默认——编辑代码时必须给所编辑区域内的关键 return 与流程分支补齐业务日志，不得以"减少 diff / 超出请求"为由跳过。其余维度仍守 minimize-diff。
 
 **日志方法**：用所采样代码库的实际日志用法（如多数用 `CoreLog`），不引入新日志系统。
 
 **示例**：
 ```swift
-// ✅ guard return 处补业务日志（只含业务信息）
-guard let record = stepRecord else {
-
-    CoreLog("步数记录解析失败，日期:\(dateString)", level: .error)
-    return
-}
-
-// ✅ catch 处补业务日志
-} catch {
-
-    CoreLog("睡眠数据同步失败，用户:\(userId)", level: .error)
-    return
-}
-
-// ❌ 禁止：dump 原始 error / 堆栈等非业务信息
+// ❌ 禁止：dump 原始 error / 堆栈等非业务信息（日志只含业务信息，禁 error 对象/堆栈/类名/地址）
 } catch {
 
     CoreLog("error:\(error) stack:\(Thread.callStackSymbols)", level: .error)
     return
 }
 ```
+
+## 调用栈日志充分性确认（user-mandated，编辑代码后必做）
+
+**触发**：编辑代码（requirement ≠ "format only"）完成逻辑编辑与区域内业务日志补全后、Report 前必做。纯格式化**不**触发——跨方法追调用栈属逻辑确认，禁止在 format-only 流程执行。
+
+**目的**：确保所编辑代码的**整体调用栈上下文**日志足以支持下一次同类问题的定位——仅凭日志即可反推到代码位置、还原业务路径与状态。若不足以支持定位，补全所有缺失日志。
+
+**范围（整体代码上下栈，不止所编辑方法本身）**：
+- **向上（父调用者链）**：谁调用了所编辑的方法，逐层追到入口（Activity / ViewController / 入口回调 / 通知中心回调）。
+- **向下（子调用者链）**：所编辑方法调用的关键子方法，逐层追到状态变更根点（实际改业务状态的那一层）。
+- 追踪方法对齐 `code-analytic` 的完整父/子调用栈追踪（逐帧 file:line + 调用证据），不得只看所编辑方法本身。
+
+**确认标准（能否支持下次问题定位）**：沿调用栈逐帧检查，日志须同时满足：
+1. **关键错误**：调用栈上每个 error / 失败分支（`catch` / `guard … else` 失败 / `if let error` / `throw` / 失败回调 `return`）都有业务日志——错误发生时能从日志知道是哪条业务路径、什么业务实体失败、失败结果。
+2. **可完整定位问题点**：调用链上每个关键状态变更 / 路径分叉点（决定成功失败、状态走向、业务路径分叉的 `if`/`else`/`guard`/`for`/`while`/`switch` 分支）都有业务日志——仅凭日志即可还原问题发生时的业务路径与状态走向，定位到具体代码位置。
+
+**补全策略**：若上述任一不满足（日志无法支持下次问题定位），沿调用栈补全**所有**缺失日志，补到同时满足两条为止——
+- 补全范围不止所编辑文件，含调用栈上下文涉及的**所有文件**（父/子调用者所在文件）。
+- 补全的日志同样遵守「日志内容：只含业务信息」（业务操作 + 业务实体 + 结果/状态）；禁 dump 原始 error / 堆栈 / 类名 / 地址 / 框架内部 / 请求响应体。
+- 用所采样代码库的实际日志方法（如 `CoreLog`），不引入新日志系统。
+- 已有日志不重写（遵守「String literals 不擅自改」+ minimize diff）。
+
+**与 edit-scope / minimize-diff 的关系**：本规则 user-mandated，对「调用栈上下文日志补全」这一维度**覆盖** edit-scope、minimize-diff 与 single-file input 默认——不得以「超出请求 / 减少 diff / 超出所给文件 / 只改单文件」为由跳过调用栈日志补全。其余维度仍守 minimize-diff。
+
+**常见误区**：
+- 只在所编辑方法内补日志、不追父/子调用者 → 调用链断裂，下次问题无法从日志定位。
+- 父调用者吞掉错误无日志、子调用者状态变更无日志 → 关键错误与定位点都缺失。
+- 以「超出所给文件 / 只改单文件」跳过 → 本规则 override single-file input，必须跨文件补全。
 
 ## Workflow (per file)
 1. **Read the whole target file** end-to-end before editing. Never edit blind.
@@ -85,7 +100,8 @@ guard let record = stepRecord else {
 4. **Edit code** (if requirement ≠ "format only"):
    1. Apply logic edits (增 add / 删 delete / 改 modify) per the requirement — statements, control flow, new methods, calls, conditions, etc.
    2. Use the project's sampled idioms for new code — naming, patterns, API.
-   3. Apply the 业务日志规则 — at every error/return site in the edited code, add a business-only log if none exists (see 业务日志规则 section).
+   3. Apply the 业务日志规则 — at every 关键 return 与流程分支 in the edited code, add a business-only log if none exists (see 业务日志规则 section).
+   4. Apply the 调用栈日志充分性确认 — trace the edited code's complete parent/child call-stack (align with code-analytic; not just the edited method), check whether logs support next-time problem localization against the two criteria (关键错误 / 可完整定位问题点); if not, add business-only logs at every missing point across all involved files (see 调用栈日志充分性确认 section).
 5. **Normalize style** (always, including after edits) — apply the Rule Table:
    1. File header (增/改)
    2. Blank lines & line breaks (增/删)
@@ -248,8 +264,10 @@ if x > 0 {
 - This rule is **user-mandated**; it applies even when the sampled codebase does not exhibit the pattern, overriding the "measured majority" default for this dimension only.
 
 ## Hard constraints — what NEVER changes without explicit request
+- **严格代码库风格**: 新增/修改代码必须严格对齐所采样代码库的既有风格（命名、模式、API、空白、注释密度与语言、访问控制），不得引入个人偏好或代码库未使用的惯例。
 - **Edit scope**: logic edits must fulfill the stated requirement; don't add unrelated changes beyond the request. Keep diff focused.
-- **业务日志 override**: the 业务日志规则 (user-mandated) requires adding business-only logs at every error/return site in the edited code; this overrides "Edit scope / minimize diff" for that dimension only — such logs are in-scope, not unrelated changes.
+- **业务日志 override**: the 业务日志规则 (user-mandated) requires adding business-only logs at every 关键 return 与流程分支 in the edited code; this overrides "Edit scope / minimize diff" for that dimension only — such logs are in-scope, not unrelated changes.
+- **调用栈日志充分性确认 override**: the 调用栈日志充分性确认 (user-mandated) requires tracing the edited code's full parent/child call-stack (align code-analytic), checking whether logs support next-time problem localization (关键错误 / 可完整定位问题点), and 补全所有缺失日志 across all involved files (not just the edited file); this overrides "Edit scope / minimize diff / single-file input" for that dimension — such cross-file log additions are in-scope, not unrelated changes.
 - **Identifiers**: don't rename types/methods/variables/parameters unless the requirement explicitly asks (even typos — `perpheral` stays `perpheral` unless told to fix).
 - **String literals**: don't edit log strings / error descriptions / quoted text unless the requirement asks.
 - **`#if` correctness**: only adjust indentation/spacing of compile-conditionals; never alter the condition or what's inside unless the requirement asks.
@@ -269,8 +287,11 @@ if x > 0 {
 | Touching every line for "consistency" | Only touch non-conforming lines. Minimize diff. |
 | Imposing a convention the codebase doesn't use | Don't. Only normalize to conventions the codebase itself exhibits — **except rules marked "user-mandated" in the Rule Table** (e.g. Rule 22), which apply regardless. |
 | Inserting a blank inside an `if`/`else if`/`else` chain (`}` then blank then `else {`) | The chain is one construct; keep `} else {` / `} else if {` tight. Blank only *around* the whole chain, not between its branches. |
-| Skipping error/return logging to "minimize diff" | 业务日志规则 is user-mandated and overrides minimize-diff/edit-scope for this dimension; when editing code, add a business-only log at every error/return site in the edited region (not on format-only runs). |
+| Skipping 关键 return/流程 logging to "minimize diff" | 业务日志规则 is user-mandated and overrides minimize-diff/edit-scope for this dimension; when editing code, add a business-only log at every 关键 return 与流程分支 in the edited region (not on format-only runs). |
 | Putting raw `error` / stack / class names in the log | Log must contain business info only (operation + business entity + outcome). No `\(error)` / `error.localizedDescription` / `Thread.callStackSymbols` / internal class names / addresses / framework internals. |
+| 只给 error/return 补日志、漏掉关键流程分支 | 关键控制流分支（决定成功失败/状态走向的 if/else/guard/for/while/switch）也要补业务日志，不止 error/return；分支入口或状态变更处补。 |
+| 只在所编辑方法内补日志、不追父/子调用栈 | 调用栈日志充分性确认 (user-mandated) 要求追完整父/子调用栈（对齐 code-analytic），确认日志支持下次定位（关键错误 + 可完整定位问题点），不支持则跨文件补全所有缺失日志；override edit-scope/minimize-diff/single-file。 |
+| 以「超出所给文件 / 只改单文件」跳过调用栈补日志 | 本规则 override single-file input，调用栈上下文涉及的所有文件（父/子调用者所在文件）都要补；不得跳过。 |
 
 ## Decision rule for unmapped patterns
 If you encounter a style situation **not in the Rule Table**, or a dimension where the codebase has no clear majority: do nothing to it. This skill normalizes to the codebase's measured conventions only — it does not impose personal preference. Surface the unmapped pattern in the summary instead of guessing.
