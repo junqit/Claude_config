@@ -1,5 +1,5 @@
 ---
-name: jira-attachments
+name: jira_attachments
 description: Use when you need to read a Jira ticket's full content (summary, description, reproduction steps, firmware/APP versions, 问题时间, comments) and download all its attachments (log zips, images, videos, files) to a local per-issue directory — given a Jira URL or issue key from jira-phone.mioffice.cn or jira.n.xiaomi.com. Triggered by "下载 Jira 附件" / "读 Jira 单" / "拉 Jira 日志" / a jira-phone.mioffice.cn or jira.n.xiaomi.com URL needing full issue info.
 ---
 
@@ -16,7 +16,7 @@ Read a Jira ticket's full information and download all its attachments (logs, zi
 
 ## Inputs (from caller)
 
-**Per-issue download directory (`<ISSUE_DIR>`)** — provided by the caller (e.g. the `jira_fix_single` agent) as the location to download + extract all attachments for this issue. The skill **receives** this directory and uses it for every download / extract / verify step below; it does **not** pick its own location when a caller path is given. **If no download directory is received** (standalone invocation with no caller path — e.g. a direct "下载 Jira 附件" trigger not coming from an agent), the skill defaults `<ISSUE_DIR>` to `~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/` — **与 `jira_fix_single` agent 的附件存储目录完全一致**（agent 生成并传入的也是 `~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/`），确保「agent 存、skill 取」永远落在同一目录，不脱节。one per-issue `<ISSUE_KEY>` subdir (never flat, to honor the one-dir-per-issue rule in 3.1).
+**Per-issue download directory (`<ISSUE_DIR>`)** — provided by the caller (e.g. the `jira-fix-single` agent) as the location to download + extract all attachments for this issue. The skill **receives** this directory and uses it for every download / extract / verify step below; it does **not** pick its own location when a caller path is given. **If no download directory is received** (standalone invocation with no caller path — e.g. a direct "下载 Jira 附件" trigger not coming from an agent), the skill defaults `<ISSUE_DIR>` to `~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/` — **与 `jira-fix-single` agent 的附件存储目录完全一致**（agent 生成并传入的也是 `~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/`），确保「agent 存、skill 取」永远落在同一目录，不脱节。one per-issue `<ISSUE_KEY>` subdir (never flat, to honor the one-dir-per-issue rule in 3.1).
 
 ## Step 1 — Parse issue key + pick MCP server by host
 
@@ -40,10 +40,19 @@ Capture: summary, description, steps, 预期结果/实际结果, 固件/APP 版�
 
 For `jira.n.xiaomi.com`: `mcp__old-mi-jira__jira_issue_get_tool(issue_key=<KEY>)`.
 
+**Extract non-Jira file links from description + comments:** The Jira attachment list (Step 3.2) only contains files uploaded to Jira. Description and comments may reference external file links — feishu cloud-drive files (`mi.feishu.cn/file/...`, `mi-p.feishu.cn/file/...`), feishu docs/wiki, etc. These are NOT Jira attachments and this skill does NOT download them (the `feishu` skill owns feishu resources). After reading, scan description + comments for `feishu.cn/file/` / `feishu.cn/docx/` / `feishu.cn/wiki/` URLs and **list them to the caller explicitly, separate from the Jira attachment list**, so the caller can hand them to the `feishu` skill or download manually. Failing to surface these leaves "linked files" silently missing from the per-issue dir — a common cause of incomplete downloads.
+
 ## Step 3 — Download attachments (primary: MCP for jira-phone)
 
+### 3.0 Pre-flight: enable Safari AppleScript control (mandatory before downloading)
+Before downloading any attachment, **unconditionally** enable Safari's "Allow JavaScript from Apple Events" so the Step 4 Safari fallback is ready if MCP download fails — do NOT wait until fallback to discover the pref is off and block on the user to enable it. This skill (and agents dispatching it, e.g. `jira-fix-single`) runs the `defaults write` itself; it does **not** ask the user to enable it mid-flow:
+```bash
+defaults write com.apple.Safari AllowJavaScriptFromAppleEvents -bool true
+```
+The pref is off/absent by default. Run this at the very start of Step 3, before 3.1. Restore to default-off at the end (Step 5) regardless of whether MCP succeeded (Step 3) or the Safari fallback (Step 4) was used.
+
 ### 3.1 Attachment directory rule (mandatory)
-All attachments download/extract to **one dir per issue** = `<ISSUE_DIR>` (the caller-provided download directory; defaults to `~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/` when no caller path is given — 与 `jira_fix_single` agent 一致). Never use `~/Downloads/` root, `/tmp`, the tool-results cache dir, or project dir. Final dir holds only attachment files + extracted products — no blob/CAS-HTML leftovers.
+All attachments download/extract to **one dir per issue** = `<ISSUE_DIR>` (the caller-provided download directory; defaults to `~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/` when no caller path is given — 与 `jira-fix-single` agent 一致). Never use `~/Downloads/` root, `/tmp`, the tool-results cache dir, or project dir. Final dir holds only attachment files + extracted products — no blob/CAS-HTML leftovers.
 
 ### 3.2 Get attachment manifest
 ```
@@ -59,6 +68,8 @@ mcp__JiraMCP__jira_download_attachments(issue_key=<KEY>)
 **Critical knowledge — do not misread the result:** the tool returns a *summary* `{"success":true,"downloaded":N,"failed":[]}` — **NOT base64, NOT file contents, NOT CAS HTML**. The real bytes land as an embedded resource that Claude Code auto-saves to the current session's tool-results cache dir, as files named `mcp-JiraMCP-blob-<ts>-<rand>.{zip,bin,mp4,txt,...}`.
 
 **Do NOT use anonymous `curl`/PAT direct to a Jira host** — a CAS gateway sits in front and 302-redirects every unauthenticated request to `cas.mioffice.cn/login`. The returned ~4 KB HTML is the CAS login page, not a download result. When `jira_download_attachments` is broken, use the **Safari fallback (Step 4)**, which rides Safari's live CAS session — not curl.
+
+**If `jira_download_attachments` returns `session expired` / 302 / error:** do NOT treat as a hard stop and do NOT retry blindly. The read API (`jira_get_issue`) and the download API share the MCP session but can fall out of sync — read often stays alive after download expires. Immediately go to Step 4 (Safari fallback); get the manifest there via `jira_get_issue(fields="attachment")` (Step 4.0) — read is usually still valid. Do NOT report "all downloads failed" without trying Safari.
 
 ### 3.4 Archive blobs from tool-results (transparent to the user)
 Match each attachment to its blob by exact byte `size`, then `mv` + rename to the original filename:
@@ -146,6 +157,8 @@ defaults delete com.apple.Safari AllowJavaScriptFromAppleEvents 2>/dev/null
 
 ### 4.3 Poll + collect into the per-issue dir
 Safari saves to `~/Downloads/`. Poll for each file by **exact byte size** (handles Safari renaming and confirms completeness — a partial download won't match):
+
+**MUST use the poll loop below, NOT a fixed `osascript delay`.** A fixed `delay 25` / `delay 30` is a common mistake — do-JS blob fetch on large files (10MB+ video) can take >45s to land (fetch reads the whole blob into memory, then `anchor.click()` triggers the save); a fixed delay shorter than the actual download time misses the file, falsely reports failure, and triggers wasteful re-downloads. The 90-iteration × 2s poll loop adapts to any download time — always use it.
 ```bash
 DEST=<ISSUE_DIR>
 # for each expected (filename, size):
@@ -180,6 +193,13 @@ osascript -e 'tell application "Safari"
 end tell'
 ```
 
+## Step 5 — Restore Safari pref
+After all downloads/extracts are done (Step 3 MCP success OR Step 4 Safari fallback complete), restore the Safari pref to its default off state:
+```bash
+defaults delete com.apple.Safari AllowJavaScriptFromAppleEvents 2>/dev/null
+```
+Idempotent with the Step 4.2 restore — both use `2>/dev/null`, so running both on the fallback path is safe.
+
 ## Output to caller
 Return a structured summary: issue key + host + full issue fields (summary/description/steps/versions/问题时间/comments) + attachment list (filename, size, content_type, local path) + path to the per-issue directory. Keep raw log analysis out of scope — this skill fetches info + files only; analysis is the caller's job.
 
@@ -197,6 +217,9 @@ Return a structured summary: issue key + host + full issue fields (summary/descr
 | Multiple issues share one directory | One subdirectory per issue key. |
 | Read zip/blob bytes as `.log` text | `unzip` first, read extracted `.log`. |
 | Treat Safari fallback as inferior | Verified MORE complete than MCP: saves video/image attachments as real files (MCP `jira_get_issue_images` only returns inline vision content). Use it whenever `jira_download_attachments` fails OR images/video are missing. |
+| Use a fixed `osascript delay` instead of the 4.3 poll loop | A fixed delay < actual download time misses large files (10MB+ video blob fetch can take >45s) and falsely reports failure, triggering wasteful re-downloads. Always use the 90×2s poll loop — it adapts to any download time. |
+| `jira_download_attachments` "session expired" = total failure | read API (`jira_get_issue`) often still alive after download session expires (they share MCP session but fall out of sync). Go straight to Safari fallback (Step 4) and get manifest via read — don't hard-stop, don't retry blindly. |
+| Feishu file links in description/comments silently missing | Jira attachment list (Step 3.2) only has Jira-uploaded files. `mi.feishu.cn/file/...` links in description/comments are NOT Jira attachments — this skill doesn't download them. Surface them to caller for the `feishu` skill / manual download. |
 
 ## Worked example — MCP success path
 URL `https://jira-phone.mioffice.cn/browse/<ISSUE_KEY>` → host `jira-phone.mioffice.cn` → JiraMCP.

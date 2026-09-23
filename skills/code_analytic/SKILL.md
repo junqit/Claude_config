@@ -1,5 +1,5 @@
 ---
-name: code-analytic
+name: code_analytic
 description: Use when analyzing code to locate a bug's root cause — reading a key method's full body, tracing its complete parent call-stack to entry, tracing every child callee's full sub-call-stack to the state-change root, and recording the frame-by-frame analysis. Also use when accumulating analyzed module/file/method knowledge into a shared context index for future lookups.
 ---
 

@@ -1,5 +1,5 @@
 ---
-name: mail-attachment
+name: mail_attachment
 description: Use when you need to FETCH information from Xiaomi OWA (mail.xiaomi.com): search mail by keyword and DOWNLOAD attachments (zips, dSYMs, logs, images, videos), or EXTRACT attachment download links. Only for an actual fetch/download/extract task — a search keyword + download intent, a mail URL whose attachments or links you must retrieve, or "搜邮件 + 下载附件 / 拿下载地址". Do NOT use to merely READ a mail body, when a mail URL is shared only as context, or just because dSYM/symbol/CI-build is mentioned without a search+download task to perform.
 ---
 
@@ -12,7 +12,7 @@ Search Xiaomi OWA (`mail.xiaomi.com`) by keyword, open the matching emails, extr
 
 - A search keyword **with intent to download** mail attachments (zips, dSYMs, logs, images, videos) or get their download URLs.
 - A `mail.xiaomi.com` URL **plus** a need to download its attachments / extract its links — not just to read it.
-- Another skill/agent needs a mail's attachments fed in locally (e.g. `jira_fix_single` fetching a dSYM from a CI build-notification email).
+- Another skill/agent needs a mail's attachments fed in locally (e.g. `jira-fix-single` fetching a dSYM from a CI build-notification email).
 
 ## When NOT to use
 - You only need to **read** a mail's body text inline — this skill searches + downloads, it does not read mail bodies.
@@ -22,7 +22,7 @@ Search Xiaomi OWA (`mail.xiaomi.com`) by keyword, open the matching emails, extr
 
 ## Inputs
 - `keyword` *(required)*: OWA search query. To find an exact token like a CI build number `Build #<N>`, pass the **distinctive bare token** (the bare number) — OWA does loose keyword matching, so the skill scans each result's `innerText` for the exact string. A full phrase matches only loosely.
-- `download_dir` *(optional)*: where downloaded files land. Default `~/Downloads/Skill/mail-attachment/`.
+- `download_dir` *(optional)*: where downloaded files land. Default `~/Downloads/Skill/mail_attachment/`.
 - `mail_host` *(optional)*: default `https://mail.xiaomi.com/owa/#path=/mail/search`.
 - `target_filter` *(optional)*: substring to pick the right email among matches (e.g. a client/job name substring).
 - `link_filter` *(optional)*: substring to select which links to download (e.g. `dSYM`, `.zip`).
@@ -222,7 +222,7 @@ OASC
    Safari saves to `~/Downloads/`; poll by byte size, then `mv` to `DOWNLOAD_DIR/FILENAME`. Verify `wc -c` matches any known size.
 
 ## Step 2 — Output to caller
-- Downloaded files in `download_dir` (default `~/Downloads/Skill/mail-attachment/`).
+- Downloaded files in `download_dir` (default `~/Downloads/Skill/mail_attachment/`).
 - A manifest: `[{filename, url, local_path, size}]`.
 - Report any attachment/link that failed to download **explicitly** — never silently skip, never fabricate a download.
 
@@ -256,9 +256,9 @@ CI build-notification emails have subject `<client> - Build #<N> - Successful!`.
 - Verified: `mi-wear-ios-miwatch` returns 50 watch CI emails (build #3928–4913) — confirms the search mechanism works; the glasses client just uses a different job name.
 
 ## Worked example — dSYM via intranet-direct host (curl path)
-Inputs: `keyword=<build_number>`, `target_filter=<client/job substring>`, `link_filter=dSYM`. `download_dir` defaulted to `~/Downloads/Skill/mail-attachment/`.
+Inputs: `keyword=<build_number>`, `target_filter=<client/job substring>`, `link_filter=dSYM`. `download_dir` defaulted to `~/Downloads/Skill/mail_attachment/`.
 - OWA returned CI build-notification emails; the row `<client> - Build #<N> - Successful!` matched (bare `<N>` + `<client>`).
 - Reading-pane link `SYMBOLS-…build<N>` → an intranet-direct object-storage (FDS) URL, e.g. `https://<fds-host>/<bucket>/<path>/App-…-build<N>.dSYM.zip`.
 - `curl -sSL` → `http=200 size=<bytes> type=application/octet-stream`; `file` = `Zip archive data`. FDS direct, no CAS → done.
-- Saved to `~/Downloads/Skill/mail-attachment/App-build<N>.dSYM.zip`. ✅
+- Saved to `~/Downloads/Skill/mail_attachment/App-build<N>.dSYM.zip`. ✅
 - Lesson: the symbol email's download host was intranet-direct (FDS), so curl sufficed; no blob-fetch needed.

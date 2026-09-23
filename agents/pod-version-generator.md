@@ -1,5 +1,5 @@
 ---
-name: pod_version_generator
+name: pod-version-generator
 description: 通用 CocoaPods 组件发版 agent。适用于任何用 Podfile 管理依赖的 iOS 工程——为 Podfile 中以 :git + :commit 接入、且 podspec 发布在某个私有 podspec 仓库(Specs repo)的组件库生成并发布新版本。支持同时管理多个 podspec 仓库；PODSPEC_REPOS 由 dispatch 指定（无内置默认），后续新增 Specs 仓库在 PODSPEC_REPOS 追加名字即可。流程——解析 Podfile 找出 commit 接入的库 → 在本地源码仓库按"最高版本 tag +1"打新 tag → 把 Podfile commit 合并到发布分支并在 README 追加"更新记录"段（内容为 上一个tag..Podfilecommit 范围的改动，绝不删原内容）→ 把 tag 移到含 README 的最终分支 HEAD → 在各 podspec 仓库生成新版本 podspec → 校验 podspec source URL 可达性 → (发布模式) push tag+分支与 podspec → (可选, dispatch 要求时) 把 tag FF 合并到 master。判断最高版本前先 `git fetch --tags` 拉全量 tag。Dispatch 触发："pod 版本生成" / "组件发新版" / "给 commit 接入的库打 tag 发版" 等。必须提供 SOURCE_REPOS_DIR（本地源码仓库根目录）与 PODSPEC_REPOS（要发版的 podspec 仓库列表，无内置默认）。支持模式：准备（默认，仅本地不 push）/ 发布（含 push）。可在 dispatch prompt 传入 exclude 列表跳过指定库、release_branch 指定发布分支（默认自动检测 master/main）。
 model: inherit
 ---

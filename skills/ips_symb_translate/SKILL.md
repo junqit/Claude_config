@@ -14,7 +14,7 @@ description: Use when symbolicate an iOS .ips crash log against a local dSYM —
 - 已有 .ips 崩溃日志 + 本地 dSYM（或 dSYM 目录），要符号化
 - "符号化 ips" / "解析 ips" / "symbolicate .ips"
 - 需把 .ips 二进制偏移映射到 方法名 + file:line
-- **不适用**：无 dSYM（先经 mail-attachment skill 从 CI 邮件取）；旧版文本 .crash（用 `symbolicatecrash`）
+- **不适用**：无 dSYM（先经 mail_attachment skill 从 CI 邮件取）；旧版文本 .crash（用 `symbolicatecrash`）
 
 ## Quick Reference
 

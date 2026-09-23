@@ -1,6 +1,6 @@
 ---
 name: miwear-ufi-anaylytic
-description: 穿戴/手机/IoT 等反馈平台的「反馈查找 → 日志下载 → 日志文件夹命名为反馈编号 → 日志解密」端到端采集 agent。接收参数：应用版本号、具体问题、反馈平台（wear/phone/iot/laptops/tv/reader/car，默认 wear）、反馈每页条目数（默认 100）、可选反馈编号（单条模式，跳过列表）。从 feedback.pt.xiaomi.com 反馈详情页拉取**全量列**反馈列表存 manifest.tsv；逐条下载日志（logDownloadBox 自动下载，文件夹改名为反馈编号）；逆向解密工具的客户端 AES 算法（密钥经服务端 `/log/decrypt/wear/decryptLogKeys` 取，本地 node 解密，解密文件单独放 `decrypted/` 子目录），递归处理打包压缩包内的嵌套加密日志至不动点。Dispatch 触发：「拉反馈日志」「下载反馈日志并解密」「miwear-ufi」+ 版本号/问题/平台。
+description: 穿戴/手机/IoT 等反馈平台的「反馈查找 → 日志下载 → 日志文件夹命名为反馈编号 → 日志解密」端到端采集 agent。接收参数：应用版本号、具体问题、反馈平台（wear/phone/iot/laptops/tv/reader/car，默认 wear）、反馈每页条目数（默认 100）、可选反馈编号（单条模式，跳过列表）。从 feedback.pt.xiaomi.com 反馈详情页拉取**全量列**反馈列表存 manifest.tsv；逐条下载日志（logDownloadBox 自动下载，文件夹改名为反馈编号）；调用 `log_decryption` skill 解密（接收日志原始目录，在目录下创建 `decryption/` 子目录放解密文件，递归处理嵌套加密日志至不动点）。Dispatch 触发：「拉反馈日志」「下载反馈日志并解密」「miwear-ufi」+ 版本号/问题/平台。
 model: inherit
 ---
 
@@ -165,75 +165,18 @@ manifest.tsv 路径：`<DEST>/manifest.tsv`（DEST 见 Step 4）。
 # 单条模式：只做 feedbackId 这一条
 ```
 
-# Step 5 — 解密日志（服务端取 key + 本地 node AES；解密文件放 `decrypted/` 子目录）
+# Step 5 — 解密日志（调用 `log_decryption` skill；解密文件放 `decryption/` 子目录）
 
-## 5.0 解密算法（逆向自 `/utils/logDecryptUtil` 内联 Vue 脚本，逐行复制）
+进入本步**先 `Skill(skill="log_decryption")`** 加载该 skill，把每个反馈的日志原始目录（`<DEST>/<ID>/`，含 `encrypt_*` 加密源）交给它——skill 接收目录后在该目录下创建 `decryption/` 子目录，自走「服务端取 key + 本地 AES 解密 + 按 magic 解压 + 递归嵌套不动点」全流程，解密后可读日志落在 `<DEST>/<ID>/decryption/`。加密源 `encrypt_*` 保留。
 
-- **文件格式**：`[128 字节密钥材料][2 字节小端 length + length 字节 AES 密文 group]…` 循环到文件尾。
-- **AES key**：不在 JS。每个文件前 128 字节 base64 后，POST `{"<uid>":"<b64>"}` 到 `/log/decrypt/wear/decryptLogKeys`（同源，`credentials:'include'`，`Content-Type: application/json`），服务端回 `{"<uid>":"<base64AesKey>"}`（key 多为 32 字节 → AES-256）。
-- **解密**：`key=Buffer.from(b64Key,'base64')`，`iv=Buffer.from('A-16-Byte-String','utf8')`（16 字节），`aes-<keylen*8>-cbc`，Pkcs7，**每个 group 新建 decipher（IV 重置）**。从 position=128 循环：读 2 字节 LE length → 读 length 字节 ct → `decipher.update(ct)+decipher.final()`（final 自动去 Pkcs7）→ 拼接。
-- **解密产物落位**：解密文件放 **`<DEST>/<ID>/decrypted/`**（与加密源同目录下的独立子目录，per 用户要求）。加密源 `encrypt_*` 保留在 `<DEST>/<ID>/`。
-- **解密后若是压缩包**：按 magic 解压到 `decrypted/`：`PK\x03\x04`(zip)→`unzip -o -d`；`1f 8b`(gzip/tar.gz)→`tar -xf -C`；否则当明文日志写文件（文件名去掉 `encrypt_` 前缀）。
-- **嵌套不动点**：有的 `encrypt_*.zip`/`encrypt_*.tar.gz` 解密后是**打包的更多 `encrypt_*` 日志**，解压出来还要再解密。递归循环（prep 扫描→取 key→解密+解压）直到 `encrypt_` 文件数不再增长。
-
-## 5.1 批量取 key（inline batch，不走 localhost）
-
-> **不可用 localhost 服务器**：解密工具页是 HTTPS，`fetch('http://127.0.0.1:...')` 被 mixed-content 拦（`TypeError: Load failed`，实测）。改为**每批 ~20 个文件 inline 进 `do JavaScript`**。
-
-- node `prep`：递归扫 `<DEST>/*/encrypt_*`，每文件取前 128 字节 base64，写 `filemap.json`（uid→path/name）+ 每 20 个一组写 `batch_N.jsobj`（JS 对象字面量 `{uid:'b64',...}`，单引号——base64 无 `'`/`\`，安全）。
-- 每批 inline POST（写 AppleScript 到临时文件再 `osascript`，避免 heredoc-in-`$()` 解析错）：
-```
-do JavaScript "(function(){var body=JSON.stringify(<LIT>);var xhr=new XMLHttpRequest();xhr.open('POST','/log/decrypt/wear/decryptLogKeys',false);xhr.setRequestHeader('Content-Type','application/json');xhr.withCredentials=true;try{xhr.send(body);}catch(e){return 'ERR:'+String(e)+':'+xhr.status;}return xhr.responseText;})()"
-```
-  - `<LIT>` = batch_N.jsobj 内容（`{0:'b64',1:'b64',...}`）。uid 用任意唯一 id（"0","1",…），服务端原样回显。
-  - 响应 `{"0":"key0",...}`（`=` 是 JSON 转义 `=`，`JSON.parse` 自动还原）。`printf '%s'` 落盘（不要 `echo`，避免反斜杠被解释）。
-- node `finish`：合并所有 `keys_batch_*.json`，逐文件本地 AES 解密，按 magic 解压到 `decrypted/`。
-
-## 5.2 do-JS 转义铁律（AppleScript `do JavaScript "..."` 内）
-
-- **禁反斜杠**（`\n`/`\s`/`\d` 全不行——AppleScript `-2741`）。
-- **禁双引号** `"`（会终结 AppleScript 字符串）——JS 字符串全用单引号，对象 key 用无引号标识符，要 JSON 就 `JSON.stringify({k:'v'})`。
-- **禁正则字面量** `/\s/`（含反斜杠）。
-- 换行用 `String.fromCharCode(10)`，双引号用 `String.fromCharCode(34)`。
-- 结果变量名别用 `rd`（AppleScript 特殊分词 `-2741`），用 `r`/`clk`/`res`。
-
-## 5.3 解密循环到不动点
-
-```bash
-# 循环（最多 6 轮）：
-#   before = find <DEST> -type f -name 'encrypt_*' | wc -l
-#   prep（递归扫 encrypt_）→ 每批 inline POST 取 key → finish（解密+解压到 decrypted/）
-#   after = 同上 count
-#   after <= before → 不动点，break
-# 每轮会重复处理已解密文件（冗余但无害：覆盖同输出；archive 重复解压同文件）。
-```
-
-## 5.4 参考解密脚本（node，自包含）
-
-```js
-// decrypt.js <encFile> <base64Key> [outFile]  —— 单文件验证用
-const fs=require('fs'),crypto=require('crypto');
-const key=Buffer.from(process.argv[3],'base64');
-const iv=Buffer.from('A-16-Byte-String','utf8');
-const data=fs.readFileSync(process.argv[2]);
-let pos=128;const parts=[];
-while(pos<data.length){
-  if(pos+2>data.length)break;
-  const gl=data.readUInt16LE(pos);pos+=2;
-  if(gl===0||pos+gl>data.length)break;
-  const ct=data.slice(pos,pos+gl);pos+=gl;
-  const d=crypto.createDecipheriv('aes-'+(key.length*8)+'-cbc',key,iv);
-  parts.push(d.update(ct),d.final());
-}
-const out=Buffer.concat(parts);
-process.argv[4]?fs.writeFileSync(process.argv[4],out):process.stdout.write(out);
-```
-
-批量版 = 上述循环 × N 文件 + magic 判断解压（zip→`unzip -o -d`，gzip→`tar -xf -C`，否则写明文）。完整 prep.js/finish.js/run_decrypt_loop.sh 见本 agent dispatch 时按本节逻辑生成到 `$CLAUDE_JOB_DIR/tmp/` 运行。
+- **前置**（`log_decryption` skill 要求，本 agent 下载阶段已满足）：Safari 登录 feedback.pt.xiaomi.com + 有 feedback.pt tab + `AllowJavaScriptFromAppleEvents` ON（Step 4 下载日志前本 agent 已 `defaults write` 开启，解密复用同一登录态 + 同一 Safari tab；任务全完成后 Step 6 统一 `defaults delete` 还原）。
+- **逐目录调用**：对 manifest 里每个**有 `encrypt_*` 文件**的反馈目录，调一次 `log_decryption` skill（传入该 `<DEST>/<ID>/` 路径）。单条模式只解 `feedbackId` 这一条。
+- **流程细节以 skill 为唯一来源**（加密格式 / AES 参数 / do-JS 转义铁律 / 不动点循环 / prep·finish·decrypt 脚本 / run_decrypt_loop.sh 入口），本 agent 不在此重复、不自行实现解密算法、不绕过该 skill 用裸 node/grep 替代。入口：`bash <skill_dir>/run_decrypt_loop.sh <DEST>/<ID>`。
+- **失败显式记录**：某目录解密失败（key 取不到 / 文件损坏 / skill 报错）→ manifest 标 `解密状态=fail:原因`，不静默跳过、不伪造可读日志。
 
 # Step 6 — 收尾：回填 manifest + 还原 pref + 报告
 
-1. **回填 manifest.tsv**：每条反馈补 `下载状态`（ok/fail:原因）、`解密状态`（ok N files / fail）、`本地路径`（`<DEST>/<ID>/`）、`decrypted 路径`（`<DEST>/<ID>/decrypted/`）。失败条目**显式列出**，不静默跳过。
+1. **回填 manifest.tsv**：每条反馈补 `下载状态`（ok/fail:原因）、`解密状态`（ok N files / fail）、`本地路径`（`<DEST>/<ID>/`）、`decryption 路径`（`<DEST>/<ID>/decryption/`）。失败条目**显式列出**，不静默跳过。
 2. **还原 pref**：`defaults delete com.apple.Safari AllowJavaScriptFromAppleEvents`（任务全完成后才删；删后 `do JavaScript` 立即失效）。
 3. **关 stray tab**：关掉本 agent 开的 `logDownloadBox`/`detail` tab（feedbackId 非 caller 原始 tab 的），保留 caller 原有 tab。
 4. **报告**：`result:` 一行——`<platform>/<appVersion>/<issue>`：找到 N 条反馈，下载 N/N，解密 N 文件（含 M 个嵌套压缩包），dest 路径，manifest.tsv 路径，失败条目清单。
@@ -245,7 +188,7 @@ process.argv[4]?fs.writeFileSync(process.argv[4],out):process.stdout.write(out);
 ├── manifest.tsv                 # 全量列 + 下载/解密状态
 ├── <反馈编号 1>/
 │   ├── encrypt_*.log / encrypt_*.zip / encrypt_*.tar.gz   # 加密源（保留）
-│   └── decrypted/                                          # 解密文件（单独子目录）
+│   └── decryption/                                         # 解密文件（单独子目录，log_decryption skill 创建）
 │       ├── com.xiaomi.miwatch.pro YYYY-MM-DD HH-MM.log
 │       ├── pro_YYYY-MM-DD--HH-MM-SS-XXX.log
 │       └── data/  (watch tar.gz 解压产物，若有)
@@ -254,7 +197,7 @@ process.argv[4]?fs.writeFileSync(process.argv[4],out):process.stdout.write(out);
 
 # 不做（边界）
 
-- 不分析日志内容、不改代码、不 commit、不评论 Jira、不发自测报告（那是 `ufi-analytic`/`jira_fix_single` 的职责；本 agent 只采集+解密，把可读日志备齐交给它们）。
+- 不分析日志内容、不改代码、不 commit、不评论 Jira、不发自测报告（那是 `ufi-analytic`/`jira-fix-single` 的职责；本 agent 只采集+解密，把可读日志备齐交给它们）。
 - 不点页面任何按钮（除自动下载外不触发任何 click）。
 - 不 curl feedback.pt.xiaomi.com / FDS URL（CAS + 脱敏，必失败）。
 - 不删 `encrypt_*` 源文件（保留，caller 可自行清理）。
