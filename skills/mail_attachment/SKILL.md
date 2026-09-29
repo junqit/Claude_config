@@ -29,9 +29,9 @@ Search Xiaomi OWA (`mail.xiaomi.com`) by keyword, open the matching emails, extr
 
 ## Step 0 — Prereqs (mandatory)
 1. **Safari logged into the mail host** (CAS SSO complete). If a navigation yields a CAS login page, tell the user to open the mail URL in Safari and complete login first.
-2. **`AllowJavaScriptFromAppleEvents` must be ON** (off by default). This is a persistent Safari pref the agent cannot self-authorize in auto mode — ask the user to run it (or approve the prompt):
+2. **`AllowJavaScriptFromAppleEvents` must be ON** (off by default). This is a persistent Safari pref — **本 skill 自己 `defaults write` 开启**（auto mode 由 `~/.claude/settings.json` permission `Bash(defaults write/delete com.apple.Safari AllowJavaScriptFromAppleEvents:*)` 放行，无需请 caller）：
    ```
-   ! defaults write com.apple.Safari AllowJavaScriptFromAppleEvents -bool true
+   defaults write com.apple.Safari AllowJavaScriptFromAppleEvents -bool true
    ```
    **Restore after the task:** `defaults delete com.apple.Safari AllowJavaScriptFromAppleEvents`.
 3. **Accessibility** for System Events keystrokes: the controlling app (Terminal / Claude Code) must be in *System Settings › Privacy & Security › Accessibility*, else `keystroke` errors "not allowed to send keystrokes". If it errors, tell the user to add the app and re-run.
@@ -235,7 +235,7 @@ OASC
 | Expecting all results in the first probe | Virtualized (~22 rows/viewport). Scroll the `_lvv_W1 … scrollContainer` (`scrollTop=scrollHeight`) + re-probe, or narrow the keyword. |
 | Search `Build #<N>` and expect only that email | OWA loose-matches `Build`. Search the bare token (the number) and scan each row's `innerText` for the exact string. |
 | `curl` a CAS-protected attachment URL | ~4KB CAS login HTML. Use the Safari same-origin blob fetch. |
-| `AllowJavaScriptFromAppleEvents` is off | `do JavaScript` errors. Caller must enable (Step 0); `defaults delete` to restore after. |
+| `AllowJavaScriptFromAppleEvents` is off | `do JavaScript` errors. 本 skill 自开（Step 0，auto mode permission 已放行）；`defaults delete` 还原。 |
 | `keystroke` errors "not allowed to send keystrokes" | Controlling app lacks Accessibility permission — add it in System Settings › Accessibility. |
 | Leave the pref ON after the task | Restore: `defaults delete com.apple.Safari AllowJavaScriptFromAppleEvents`. |
 | Read a ~4KB CAS HTML as "download failed" | It's the CAS interception page. Use the Safari blob fetch, not curl. |

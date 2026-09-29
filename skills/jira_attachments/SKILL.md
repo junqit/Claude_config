@@ -18,6 +18,18 @@ Read a Jira ticket's full information and download all its attachments (logs, zi
 
 **Per-issue download directory (`<ISSUE_DIR>`)** — provided by the caller (e.g. the `jira-fix-single` agent) as the location to download + extract all attachments for this issue. The skill **receives** this directory and uses it for every download / extract / verify step below; it does **not** pick its own location when a caller path is given. **If no download directory is received** (standalone invocation with no caller path — e.g. a direct "下载 Jira 附件" trigger not coming from an agent), the skill defaults `<ISSUE_DIR>` to `~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/` — **与 `jira-fix-single` agent 的附件存储目录完全一致**（agent 生成并传入的也是 `~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/`），确保「agent 存、skill 取」永远落在同一目录，不脱节。one per-issue `<ISSUE_KEY>` subdir (never flat, to honor the one-dir-per-issue rule in 3.1).
 
+## Step 0 — Enable AllowJavaScriptFromAppleEvents（首要任务, 第一步）
+**进入本 skill 第一件事**（在 Step 1 读单/选 MCP server 之前）：自己开启 Safari 的 Allow JavaScript from Apple Events——不请 caller、不等 Step 4 fallback 才发现 pref 关着。
+
+```bash
+defaults write com.apple.Safari AllowJavaScriptFromAppleEvents -bool true
+```
+
+- pref 默认 off/absent；**不开则 Step 4 Safari fallback（MCP 下载失败时唯一兜底）起不来**，且 dispatch 本 skill 的 agent（jira-fix-single）后续的 `log_decryption`（取 AES key）、`mail_attachment`（取 dSYM）也都依赖它。
+- 本 skill 与 dispatch 它的 agent **都自己跑该 `defaults write`，不请 caller 中途开启**。auto mode 下由 settings.json permission 放行（见下「auto mode 拒绝处理」）。
+- **auto mode 拒绝处理**：若 `defaults write` 被 auto classifier 拒（持久偏好默认拒），STOP 并报 caller：需在 `~/.claude/settings.json` 加 `Bash(defaults write com.apple.Safari AllowJavaScriptFromAppleEvents:*)` + `Bash(defaults delete com.apple.Safari AllowJavaScriptFromAppleEvents:*)` 两条 allow permission 后重试。**不得谎称已开启、不得跳过本步直接下载**。
+- 任务结束（无论 Step 3 MCP 成功还是 Step 4 Safari fallback）按 Step 5 `defaults delete com.apple.Safari AllowJavaScriptFromAppleEvents` 还原默认 off。
+
 ## Step 1 — Parse issue key + pick MCP server by host
 
 The Jira host decides the MCP server (different tool prefixes).
@@ -44,12 +56,8 @@ For `jira.n.xiaomi.com`: `mcp__old-mi-jira__jira_issue_get_tool(issue_key=<KEY>)
 
 ## Step 3 — Download attachments (primary: MCP for jira-phone)
 
-### 3.0 Pre-flight: enable Safari AppleScript control (mandatory before downloading)
-Before downloading any attachment, **unconditionally** enable Safari's "Allow JavaScript from Apple Events" so the Step 4 Safari fallback is ready if MCP download fails — do NOT wait until fallback to discover the pref is off and block on the user to enable it. This skill (and agents dispatching it, e.g. `jira-fix-single`) runs the `defaults write` itself; it does **not** ask the user to enable it mid-flow:
-```bash
-defaults write com.apple.Safari AllowJavaScriptFromAppleEvents -bool true
-```
-The pref is off/absent by default. Run this at the very start of Step 3, before 3.1. Restore to default-off at the end (Step 5) regardless of whether MCP succeeded (Step 3) or the Safari fallback (Step 4) was used.
+### 3.0 AllowJavaScriptFromAppleEvents 已在 Step 0 开启
+Step 0（首要任务）已 `defaults write` 开启 pref，本步无需再开。若跳过 Step 0 直入 Step 3（如独立调本 skill 从 Step 3 入口），补开 `defaults write com.apple.Safari AllowJavaScriptFromAppleEvents -bool true`（auto mode 拒绝处理见 Step 0）。
 
 ### 3.1 Attachment directory rule (mandatory)
 All attachments download/extract to **one dir per issue** = `<ISSUE_DIR>` (the caller-provided download directory; defaults to `~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/` when no caller path is given — 与 `jira-fix-single` agent 一致). Never use `~/Downloads/` root, `/tmp`, the tool-results cache dir, or project dir. Final dir holds only attachment files + extracted products — no blob/CAS-HTML leftovers.
@@ -201,7 +209,21 @@ defaults delete com.apple.Safari AllowJavaScriptFromAppleEvents 2>/dev/null
 Idempotent with the Step 4.2 restore — both use `2>/dev/null`, so running both on the fallback path is safe.
 
 ## Output to caller
-Return a structured summary: issue key + host + full issue fields (summary/description/steps/versions/问题时间/comments) + attachment list (filename, size, content_type, local path) + path to the per-issue directory. Keep raw log analysis out of scope — this skill fetches info + files only; analysis is the caller's job.
+Return a structured summary with **all obtained info** — issue key + host + 以下字段(从 issue fields + description + comments 提取,缺的标「未记录」,不臆造):
+
+- **问题描述**:description 原文(summary + description 全量)
+- **问题发生时间点**:问题时间(日志定位锚点;description/comments 里有具体时间戳的优先取,精确到分)
+- **复现步骤**:预期结果 + 实际结果 + 前提条件 + 复现次数/测试次数/测试结果
+- **手机型号**:手机版本(如「iPhone 16 26.6.1」「iPhone 15 Pro iOS26.3(23D127)」;多次复现/多设备逐条列出)
+- **设备/眼镜型号**:固件版本 + 设备名/型号(如「OS4.0.109.0.UQIECNXM」+ 设备名;多固件版本逐条)
+- **APP 版本**:如「9.9.9(849)」
+- **工单状态 / assignee / reporter / 创建时间 / 更新时间**
+- **comments**:逐条(作者 + 时间 + 正文摘要,含飞书日志/云盘链接等)
+- **附件清单**:每条 filename + size(bytes) + content_type + 本地路径
+- **日志目录**:`<ISSUE_DIR>` 绝对路径(解压后 `.log` / `.ips` 所在;检出 `encrypt_*` 解密后明文在 `<ISSUE_DIR>/decryption/`)
+- **飞书/外部文件链接**:description/comments 里出现的 `mi.feishu.cn/file/` / `feishu.cn/docx/` / `feishu.cn/wiki/` 等链接,单独列出(非 Jira 附件,本 skill 不下,交给 `feishu` skill)
+
+Keep raw log analysis out of scope — this skill fetches info + files only; analysis is the caller's job.
 
 ## Common Mistakes
 | Mistake | Reality |

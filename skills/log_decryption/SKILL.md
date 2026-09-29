@@ -16,15 +16,15 @@ description: Use when needing to decrypt Xiaomi wear/phone encrypted feedback lo
 - 文件前缀 `encrypt_` 的 `.log`/`.zip`/`.tar.gz`（来自 feedback.pt.xiaomi.com 下载）
 
 **When NOT to use:**
-- 还没下载日志 → 先 `miwear-ufi-anaylytic` agent 下载
-- 要分析日志内容 → 交给 `log-code-anylytic` / `ufi-analytic`
+- 还没下载日志 → 先 `ufi-miwear-analytic` agent 下载
+- 要分析日志内容 → 交给 `log-code-analytic` / `ufi-analytic`
 
 ## 前置（mandatory；缺则停步报 caller）
 
 1. **Safari 已登录 `feedback.pt.xiaomi.com`**（CAS SSO 完成）——取 key 的 POST 是同源 + `credentials:'include'`，需登录态 cookie。
-2. **`AllowJavaScriptFromAppleEvents` ON**（auto-mode classifier 可能拦 `defaults write`，需 caller 手动 `!` 前缀执行）：
+2. **`AllowJavaScriptFromAppleEvents` ON**——**本 skill 自己 `defaults write` 开启**（auto mode 由 `~/.claude/settings.json` permission `Bash(defaults write/delete com.apple.Safari AllowJavaScriptFromAppleEvents:*)` 放行，无需 caller 手动执行）：
    ```
-   ! defaults write com.apple.Safari AllowJavaScriptFromAppleEvents -bool true
+   defaults write com.apple.Safari AllowJavaScriptFromAppleEvents -bool true
    ```
    任务后还原：`defaults delete com.apple.Safari AllowJavaScriptFromAppleEvents`（Safari 运行中删立即生效，无需重启；任务未完前不要删）。
 3. **Safari 有一个 `feedback.pt.xiaomi.com` 的 tab**（任意页面即可，同源就能发 POST 取 key）。
@@ -86,4 +86,4 @@ node <skill_dir>/decrypt.js <encFile> <base64Key> [outFile]
 | `do JavaScript` 里用 `\n` / `"` / `/\s/` | AppleScript `-2741` 解析错 | 单引号 + `String.fromCharCode(10)` |
 | 一个 decipher 处理所有 group | IV 连续，解密错 | 每 group 新建 decipher（IV 重置） |
 | 删 `encrypt_` 源文件 | 嵌套循环无法重扫 | 保留 `encrypt_`，只输出到 `decryption/` |
-| 轮询匹配 `*.zip.download` 半成品 | 抓到半成品 | 本 skill 只解密已落盘的 `encrypt_*`，下载交给 `miwear-ufi-anaylytic` |
+| 轮询匹配 `*.zip.download` 半成品 | 抓到半成品 | 本 skill 只解密已落盘的 `encrypt_*`，下载交给 `ufi-miwear-analytic` |

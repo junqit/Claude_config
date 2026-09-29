@@ -1,0 +1,22 @@
+{
+  "autoMemoryEnabled": false,
+  "enabledPlugins": {
+    "clangd-lsp@claude-plugins-official": true,
+    "figma@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true,
+    "swift-lsp@claude-plugins-official": true
+  },
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "sk-psTx7IFlW79l67Or8JqLsBL0CqCtkhVlHoOMfRMts1Ugkdiu",
+    "ANTHROPIC_BASE_URL": "http://model.mify.ai.srv/anthropic",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "zhipuai/glm-5.2[1M]",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "zhipuai/glm-5.2[1M]",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "zhipuai/glm-5.2[1M]"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(defaults write com.apple.Safari AllowJavaScriptFromAppleEvents:*)",
+      "Bash(defaults delete com.apple.Safari AllowJavaScriptFromAppleEvents:*)"
+    ]
+  }
+}

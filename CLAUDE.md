@@ -48,7 +48,7 @@
 - **触发**：「pod 版本生成 / 组件发新版 / 给 commit 接入的库打 tag 发版」。
 - **规则**：dispatch `pod-version-generator`，**必须提供 SOURCE_REPOS_DIR 与 PODSPEC_REPOS**（podspec 仓库列表，无内置默认）。模式：`准备`（默认）/ `发布`（含 push）。
 
-### miwear-ufi-anaylytic
-- **触发**：「拉反馈日志 / 下载反馈日志并解密 / 反馈查找→日志下载→解密 / miwear-ufi」（可带应用版本号 / 具体问题 / 反馈平台，均可选）。
-- **参数**（**全部可选，可不传**）：`appVersion` 应用版本号、`issue` 具体问题名或 tagId、`platform` 反馈平台（默认 `wear`）、`pageSize` 每页条目数（默认 `100`）、`feedbackId` 反馈编号（单条模式，跳过列表只下该条）。不传 `appVersion`/`issue` 则该维度不过滤（更宽查询）；完全不传 = 拉 wear 平台最新 100 条反馈。
-- **规则**：dispatch `miwear-ufi-anaylytic`，从 feedback.pt.xiaomi.com 按版本+问题+平台拉**全量列**反馈列表存 manifest.tsv → 逐条下载日志（logDownloadBox 页面加载自动下载，文件夹改名为反馈编号，**不点「下载所有」按钮**——合成 click 会导航到脱敏坏 URL）→ 调用 `log_decryption` skill 解密（接收日志原始目录，创建 `decryption/` 子目录放解密文件，递归处理嵌套加密日志至不动点）。前置：Safari 登录 feedback.pt；`AllowJavaScriptFromAppleEvents` 由 agent 在下载日志前自动 `defaults write com.apple.Safari AllowJavaScriptFromAppleEvents -bool true` 开启（不请 caller 手动开），任务结束 agent 自动 `defaults delete com.apple.Safari AllowJavaScriptFromAppleEvents` 还原。**只采集+解密，不分析日志内容、不改码、不 commit**（分析交给 `ufi-analytic` / `jira-fix-single`）。
+### ufi-wear-analytic
+- **触发**：「分析反馈聚合 Jira」「反馈合并 Jira + 表格逐条分析」「ufi-wear」+ Jira URL + 表格文件路径。
+- **参数**：Jira URL/issue key（反馈合并后的聚合 Jira，**仅上下文**）、表格文件路径（反馈ID整体列表，必填）、`platform`（logDownloadBox productName，默认 `wear`）、`codePath`（`log-code-analytic` 代码路径，默认 `$PWD`）。两个必填输入缺一不可。
+- **规则**：UFI 路径端到端 agent。读 Jira 取上下文+预期版本（不取元数据/不下日志）→ 读表格文件得反馈ID列表 → 对每条反馈**串行**走：feedback.pt logDownloadBox 查详情（设备/版本/问题/时间）+ 页面加载自动下载原始日志（文件夹改名=反馈编号，**不点「下载所有」按钮**——合成 click 导航到脱敏坏 URL）→ `log_decryption` skill 解密（`<DEST>/<ID>/decryption/`）→ dispatch `log-code-analytic`（问题描述/问题时间点/日志目录/代码路径/预期版本，**等返回才进下一条**）→ 汇 5字段结论表（反馈ID/设备型号/版本号/问题时间点/问题时间点完整日志）。DEST=`~/Downloads/jira-bugfix-flow/<ISSUE_KEY>/`。前置：Safari 登录 feedback.pt；`AllowJavaScriptFromAppleEvents` 由 agent 在下载前 `defaults write` 开启、任务完 `defaults delete` 还原。**只采集+解密+逐条 dispatch 分析出 5字段结论，不修复/不 commit/不评论 Jira/不飞书/不出优化计划/不做调用栈**（调用栈归 `log-code-analytic`）。**与 `jira-fix-single` 是两个不同 agent**（UFI 路径 ≠ 普通 Jira 分析；日志从 feedback.pt 下，不从 Jira 附件）。
