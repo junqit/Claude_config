@@ -1,15 +1,15 @@
 ---
 name: program_coder
-description: Use when given a Swift source file path + an edit requirement (改逻辑/加功能/删代码/重构/整理格式/format/clean up). Edits code logic per the request AND normalizes style to the project's measured-majority conventions. Combines code editing + style normalization.
+description: 给定 Swift 源文件路径 + 代码编辑需求（改逻辑/加功能/删代码/重构/整理格式/format/clean up）时使用。按需求编辑代码逻辑，并把新增/修改代码归一化到所采样代码库的多数风格。代码编辑 + 风格归一化合一。
 ---
 
 # Program Coder
 
-## Overview
-A file-path-driven Swift code editor + style normalizer with two independent capabilities:
+## 概览
+一个由文件路径驱动的 Swift 代码编辑器 + 风格归一化器，含两个独立能力：
 
-1. **编辑代码 (Edit code)** — modify logic / add new code / delete code / refactor per the requirement. Can change behavior, control flow, statements, conditions, add/remove methods and calls.
-2. **代码风格 (Code style)** — normalize to the project's own conventions (Rule Table): blank lines, indentation, colon spacing, signature alignment, access-control order, comments.
+1. **编辑代码** — 按需求修改逻辑 / 新增代码 / 删代码 / 重构。可改行为、控制流、语句、条件，增删方法与调用。
+2. **代码风格** — 归一化到工程自身约定（规则表）：空行、缩进、冒号空格、签名对齐、访问控制顺序、注释。
 
 ## 两能力关系（独立使用 + 约束）
 - 两个能力**可独立使用，不是捆绑**：
@@ -18,26 +18,26 @@ A file-path-driven Swift code editor + style normalizer with two independent cap
 - **硬约束：添加或修改代码逻辑时，必须同时应用代码风格归一化**。即编辑代码后必须格式化改动的代码，保证新增/修改的代码符合代码风格。不可只编辑代码不格式化。
 - 单独格式化（不改逻辑）允许；单独编辑代码不格式化**禁止**。
 
-This skill does **not** ship a fixed style sheet. Style targets are **discovered by sampling the surrounding code** (sibling `.swift` files in the same module/target) and normalizing to the measured majority. When the codebase is internally inconsistent on a dimension, pick the **measured majority** — never personal preference. **写代码必须严格按所采样代码库的既有风格**：命名、模式、API 用法、空白、注释密度与语言、访问控制等一律对齐被采样代码；不得引入个人偏好或代码库未使用的惯例（user-mandated 硬约束，与 minimize-diff 同级优先）。
+本 skill **不**内置固定样式表。风格目标是**通过采样周边代码**（同模块/ target 的兄弟 `.swift` 文件）发现、并归一化到测得多数。当代码库在某维度内部不一致时，取**测得多数**——绝不凭个人偏好。**写代码必须严格按所采样代码库的既有风格**：命名、模式、API 用法、空白、注释密度与语言、访问控制等一律对齐被采样代码；不得引入个人偏好或代码库未使用的惯例（用户强制硬约束，与最小 diff 同级优先）。
 
-## Input
-- **A single file path** (absolute or repo-relative `.swift` file).
-- **An edit requirement** — what logic/feature to add/modify/delete; or "format only" if just style.
+## 输入
+- **一个文件路径**（绝对路径或仓库相对路径的 `.swift` 文件）。
+- **编辑需求** — 要加/改/删什么逻辑或功能；或 "format only" 表示仅做风格。
 
-## When to Use
-- Given a `.swift` file path + a code edit request (改逻辑 / 加功能 / 删代码 / 重构).
-- Before committing edited code — normalize its style to project conventions.
-- Pure format/clean up requests (requirement = "format only").
+## 何时使用
+- 给定 `.swift` 文件路径 + 代码编辑请求（改逻辑 / 加功能 / 删代码 / 重构）。
+- 提交已编辑代码前——把其风格归一化到工程约定。
+- 纯格式化/清理请求（requirement = "format only"）。
 
-## When NOT to Use
-- No file path provided (ask for one first).
-- Non-Swift files (this skill is calibrated to Swift conventions).
+## 何时不使用
+- 没给文件路径（先问一个）。
+- 非 Swift 文件（本 skill 按 Swift 约定校准）。
 
-## 业务日志规则（user-mandated，仅编辑代码时）
+## 业务日志规则（用户强制，仅编辑代码时）
 
 **触发条件**：仅当 requirement ≠ "format only"（编辑代码：改逻辑 / 加功能 / 删代码 / 重构）时适用。纯格式化**不**触发——添加日志属逻辑变更，禁止在 format-only 流程插入。
 
-**规则**：在本次 requirement 涉及的代码（所编辑的方法 / 区域）内，**所有关键 return 与流程分支**都要有日志——含 error 分支、guard/early/normal return，以及 if/else/for/while/guard/switch 中决定成功失败或状态走向的关键控制流分支；若无日志则补一条日志语句；已有日志不重写（遵守「String literals 不擅自改」+ minimize diff）。
+**规则**：在本次 requirement 涉及的代码（所编辑的方法 / 区域）内，**所有关键 return 与流程分支**都要有日志——含 error 分支、guard/early/normal return，以及 if/else/for/while/guard/switch 中决定成功失败或状态走向的关键控制流分支；若无日志则补一条日志语句；已有日志不重写（遵守「字符串字面量不擅自改」+ 最小 diff）。
 
 **适用点**（不限于此）：
 - `guard … else { return }` 的 guard / early return
@@ -45,13 +45,13 @@ This skill does **not** ship a fixed style sheet. Style targets are **discovered
 - `if let error = err { … return }` 失败回调
 - 函数内任意显式 `return`（含正常 return）
 - `throw` / 失败分支
-- 关键控制流分支：`if`/`else if`/`else`/`guard`/`for`/`while`/`switch` 中决定成功失败、状态走向或业务路径分叉的分支（非琐碎判断），在分支入口或关键状态变更处补业务日志
+- 关键控制流分支：`if`/`else if`/`else`/`guard`/`for`/`while`/`switch` 中决定成功失败、状态走向或业务路径分叉的分支（非琐细判断），在分支入口或关键状态变更处补业务日志
 
 **日志内容：只含业务信息，不含其他信息**
 - ✅ 业务信息：在做什么业务操作、涉及的业务实体（用户 / 设备 / 运动类型 / 记录 / 日期等）、业务结果或状态。
 - ❌ 其他信息（禁止写入日志）：原始 error 对象 dump（`error.localizedDescription` / `\(error)`）、堆栈 / `Thread.callStackSymbols`、内部类名 / 内存地址 / 框架内部细节、请求 / 响应体、技术调试符号。
 
-**与 minimize-diff / edit-scope 的关系**：本规则为 user-mandated，对"关键 return 与流程分支补业务日志"这一维度**覆盖** minimize-diff 与 edit-scope 默认——编辑代码时必须给所编辑区域内的关键 return 与流程分支补齐业务日志，不得以"减少 diff / 超出请求"为由跳过。其余维度仍守 minimize-diff。
+**与最小 diff / 编辑范围的关系**：本规则为用户强制，对"关键 return 与流程分支补业务日志"这一维度**覆盖**最小 diff 与编辑范围默认——编辑代码时必须给所编辑区域内的关键 return 与流程分支补齐业务日志，不得以"减少 diff / 超出请求"为由跳过。其余维度仍守最小 diff。
 
 **日志方法**：用所采样代码库的实际日志用法（如多数用 `CoreLog`），不引入新日志系统。
 
@@ -65,104 +65,110 @@ This skill does **not** ship a fixed style sheet. Style targets are **discovered
 }
 ```
 
-## 调用栈日志充分性确认（user-mandated，编辑代码后必做）
+## 修改后完整上下文分析（用户强制，编辑代码后必做）
 
 **触发**：编辑代码（requirement ≠ "format only"）完成逻辑编辑与区域内业务日志补全后、Report 前必做。纯格式化**不**触发——跨方法追调用栈属逻辑确认，禁止在 format-only 流程执行。
 
-**目的**：确保所编辑代码的**整体调用栈上下文**日志足以支持下一次同类问题的定位——仅凭日志即可反推到代码位置、还原业务路径与状态。若不足以支持定位，补全所有缺失日志。
+**核心原则 · 只做一次完整上下文分析与读取**：对改动后的完整逻辑做**一遍**完整父/子调用栈追踪 + 所有后续逻辑分支读取，在**同一遍**里同时完成两件事——①调用栈日志充分性确认（够不够下次定位）②修改影响域分析（只对目标生效、无波及其他业务）。**不重复追栈**：两份结论共用同一次读取的上下文，不得拆成两步各追一遍。
 
-**范围（整体代码上下栈，不止所编辑方法本身）**：
-- **向上（父调用者链）**：谁调用了所编辑的方法，逐层追到入口（Activity / ViewController / 入口回调 / 通知中心回调）。
-- **向下（子调用者链）**：所编辑方法调用的关键子方法，逐层追到状态变更根点（实际改业务状态的那一层）。
-- 追踪方法对齐 `code_analytic` 的完整父/子调用栈追踪（逐帧 file:line + 调用证据），不得只看所编辑方法本身。
+**一次完整读取的范围（改动后的完整逻辑调用栈，不止所编辑方法本身）**：
+- **向上（父调用者链）**：所有调用所编辑方法的地方，逐层追到入口（ViewController / 入口回调 / 通知中心回调 / 闭包）。每条路径读其上下文，并核验改动是否改变了该调用方对所编辑方法的**调用前提 / 传入参数 / 对返回值与副作用的预期**。
+- **向下（子调用者链 + 后续逻辑分支）**：所编辑方法调用的所有子方法，**以及改动后所有可达的后续逻辑分支**（`if`/`else if`/`else`/`guard`/`for`/`while`/`switch`/`do` 的每一条分支），逐层追到状态变更根点（实际改业务状态的那一层：属性写 / 持久化 / 通知 / UI 刷新 / 任务启停）。每条分支读其实现，并核验改动是否改变了该路径触发的状态变更。
+- 追踪对齐 `code_analytic` 的完整父/子调用栈追踪（逐帧 `file:line` + 调用证据），不得只看所编辑方法本身；**必须基于改动后的代码逻辑分析**，不是改动前。
+- 黑盒边界：追到系统/闭源 SDK 按 `code_analytic` 的停止追踪边界标黑盒，从可观测行为（日志/文档/运行时）推断。
 
-**确认标准（能否支持下次问题定位）**：沿调用栈逐帧检查，日志须同时满足：
+**在同一遍上下文里，同时评估两个维度**：
+
+**维度一 · 调用栈日志充分性（够不够下次定位）**——沿栈逐帧检查，日志须同时满足：
 1. **关键错误**：调用栈上每个 error / 失败分支（`catch` / `guard … else` 失败 / `if let error` / `throw` / 失败回调 `return`）都有业务日志——错误发生时能从日志知道是哪条业务路径、什么业务实体失败、失败结果。
 2. **可完整定位问题点**：调用链上每个关键状态变更 / 路径分叉点（决定成功失败、状态走向、业务路径分叉的 `if`/`else`/`guard`/`for`/`while`/`switch` 分支）都有业务日志——仅凭日志即可还原问题发生时的业务路径与状态走向，定位到具体代码位置。
+- 不满足则沿**同一遍已读的栈**跨文件补全所有缺失日志，补到同时满足两条：补全范围含父/子调用者所在**所有文件**；补的日志遵守「业务日志规则」段的日志内容与方法（只含业务信息、禁 dump error/堆栈/类名/地址、用所采样代码库日志方法、已有日志不重写），此处不重述。
 
-**补全策略**：若上述任一不满足（日志无法支持下次问题定位），沿调用栈补全**所有**缺失日志，补到同时满足两条为止——
-- 补全范围不止所编辑文件，含调用栈上下文涉及的**所有文件**（父/子调用者所在文件）。
-- 补全的日志同样遵守「日志内容：只含业务信息」（业务操作 + 业务实体 + 结果/状态）；禁 dump 原始 error / 堆栈 / 类名 / 地址 / 框架内部 / 请求响应体。
-- 用所采样代码库的实际日志方法（如 `CoreLog`），不引入新日志系统。
-- 已有日志不重写（遵守「String literals 不擅自改」+ minimize diff）。
+**维度二 · 修改影响域（只对目标生效、无波及其他业务）**——沿**同一遍栈**：
+1. **目标有效性**（正向）：改动确实使 requirement 的目标业务路径产生预期效果（改动对目标生效）。
+2. **无意外影响**（反向）：改动**只**对目标路径生效；所有非目标业务路径（其他调用方、其他分支、其他设备/型号/流程）的输入/输出/状态/时序**保持不变**。逐路径列出"受影响✗ / 不受影响✓"的判定依据。
+- 发现波及非目标业务 → **首选收窄改动**使其只影响目标（加状态/条件守卫、缩小分支范围、限定入口等），收窄后**重新跑本步骤**（重做这一遍完整读取）；无法收窄 → Report 里**显式标注「影响域超出目标」**，列出所有受影响业务路径 + 每条的影响后果 + 处理建议，交 caller/用户决策，**不得在 Report 里声称"无影响"**。
 
-**与 edit-scope / minimize-diff 的关系**：本规则 user-mandated，对「调用栈上下文日志补全」这一维度**覆盖** edit-scope、minimize-diff 与 single-file input 默认——不得以「超出请求 / 减少 diff / 超出所给文件 / 只改单文件」为由跳过调用栈日志补全。其余维度仍守 minimize-diff。
+**通过条件**：维度一（日志够定位）与维度二（只对目标生效、无意外影响）**同时满足**才算通过；不通过不得交付。
 
-**常见误区**：
-- 只在所编辑方法内补日志、不追父/子调用者 → 调用链断裂，下次问题无法从日志定位。
-- 父调用者吞掉错误无日志、子调用者状态变更无日志 → 关键错误与定位点都缺失。
-- 以「超出所给文件 / 只改单文件」跳过 → 本规则 override single-file input，必须跨文件补全。
+**与编辑范围 / 最小 diff / 单文件的关系**：本规则用户强制，对「调用栈上下文一次性完整读取 + 日志充分性 + 影响域」这些维度**覆盖**编辑范围、最小 diff 与单文件输入默认——不得以「超出请求 / 减少 diff / 超出所给文件 / 只改单文件」为由跳过；调用栈上下文涉及的**所有文件**（父/子调用者所在文件）都要在这一遍里读，跨文件。
 
-## Workflow (per file)
-1. **Read the whole target file** end-to-end before editing. Never edit blind.
-2. **Sample the codebase** — read sibling `.swift` files in the same module/target to measure the dominant convention for each Rule Table dimension, and to learn the project's idioms (naming, patterns, API usage).
-3. **Understand the edit requirement** — what logic/feature to add/modify/delete. Locate the relevant methods/lines.
-4. **Edit code** (if requirement ≠ "format only"):
-   1. Apply logic edits (增 add / 删 delete / 改 modify) per the requirement — statements, control flow, new methods, calls, conditions, etc.
-   2. Use the project's sampled idioms for new code — naming, patterns, API.
-   3. Apply the 业务日志规则 — at every 关键 return 与流程分支 in the edited code, add a business-only log if none exists (see 业务日志规则 section).
-   4. Apply the 调用栈日志充分性确认 — trace the edited code's complete parent/child call-stack (align with code_analytic; not just the edited method), check whether logs support next-time problem localization against the two criteria (关键错误 / 可完整定位问题点); if not, add business-only logs at every missing point across all involved files (see 调用栈日志充分性确认 section).
-5. **Normalize style** (always, including after edits) — apply the Rule Table:
-   1. File header (增/改)
-   2. Blank lines & line breaks (增/删)
-   3. Braces & indentation (改)
-   4. Colon spacing & signature alignment (改)
-   5. Comments (增/改)
-   6. `self.` and access-control order (增/改)
-6. **Re-read the result** — confirm edits fulfill the requirement AND style conforms.
-7. Report a concise summary: logic edits (增/删/改) + style fixes, lines touched.
+**输出（写入 skill 最终 Report，必含）· 一次读取、两份结论**：
+- **完整调用栈**：父栈每帧 `file:line` + 调用证据（哪行调用了所编辑方法）；子栈每帧 + 改动后每条后续逻辑分支到状态变更根点的 `file:line`。
+- **日志充分性结论**：够/不够下次定位 + 补了哪些日志（够定位 / 已补全至够 / 仍缺 + 缺在哪）。
+- **影响域结论**：目标有效性 + 逐路径无意外影响判定（受影响✗ / 不受影响✓ + 依据）；若超出目标，列出受影响业务 + 后果 + 建议。
 
-## Rule Table (style dimensions; target = measured majority of THIS codebase)
+## 工作流（按文件）
+1. **读整个目标文件**——编辑前从头到尾读完。绝不盲改。
+2. **采样代码库**——读同模块/ target 的兄弟 `.swift` 文件，测量规则表各维度的主导约定，并学工程的惯用法（命名、模式、API 用法）。
+3. **理解编辑需求**——要加/改/删什么逻辑或功能。定位相关方法/行。
+4. **编辑代码**（若 requirement ≠ "format only"）：
+   1. 按需求应用逻辑编辑（增 / 删 / 改）——语句、控制流、新方法、调用、条件等。
+   2. 新代码用工程采样的惯用法——命名、模式、API。
+   3. 应用业务日志规则——在所编辑代码的每个关键 return 与流程分支，若无日志则补一条只含业务信息的日志（见业务日志规则段）。
+5. **修改后完整上下文分析**（若 requirement ≠ "format only"）——做**一遍**改动后的完整上下文读取：追完整父/子调用栈 + 改动后所有下游逻辑分支到状态变更根点（对齐 `code_analytic`；跨所有相关文件，不止所编辑文件）。在这一遍里，同时确认调用栈日志充分性（够不够下次定位：关键错误 + 可完整定位问题点；跨文件补缺失的只含业务信息的日志）并核验影响域（目标有效性 + 无意外影响：改动只对目标生效、无波及其他业务）。若影响域超出目标，收窄改动（再跑本步）或显式标注「影响域超出目标」+ 列受影响业务 + 建议；绝不静默交付或谎称"无影响"（见修改后完整上下文分析段）。
+6. **归一化风格**（始终，含编辑后）——应用规则表：
+   1. 文件头（增/改）
+   2. 空行与换行（增/删）
+   3. 大括号与缩进（改）
+   4. 冒号空格与签名对齐（改）
+   5. 注释（增/改）
+   6. `self.` 与访问控制顺序（增/改）
+7. **重读结果**——确认编辑满足需求且风格符合。
+8. **报告**简洁总结：逻辑编辑（增/删/改）+ 风格修正、触及行数，**+ 修改后完整上下文分析结论**（按「修改后完整上下文分析」段的输出契约：完整调用栈 + 日志充分性结论 + 影响域结论）。
 
-| # | Dimension | Op | Default target (override with measured majority) | How to determine |
+## 规则表（风格维度；目标 = 本代码库的测得多数）
+
+| # | 维度 | 操作 | 默认目标（用测得多数覆盖） | 如何确定 |
 |---|------|----|------------------------|----------|
-| 1 | File header block | 增/改 | If the codebase uses a standard `//` header (FileName/TargetName/author/date), normalize to it | Sample; apply only if a header convention exists project-wide |
-| 2 | Indentation | 改 | 4 spaces, never tabs | Swift standard; verify by sampling |
-| 3 | Blank after `{` opening a body | 增/删 | One blank line after `{` opening a `func`/`init`/computed-`var` body (multi-statement; one-line trivial stubs exempt per Rule 19) | Hard rule (user-mandated); applies regardless of measured majority — see section |
-| 4 | No consecutive blank lines | 删 | At most one blank line anywhere; collapse `\n\n\n` → `\n\n` | Broad convention |
-| 5 | Blank before closing `}` | 删 | No blank line immediately before `}` | Broad convention |
-| 6 | Blank between decls | 增 | One blank line between methods; one between top-level decls | Broad convention |
-| 7 | EOF | 删/增 | Single trailing newline; no trailing blank lines | Standard |
-| 8 | Colon — type annotation | 改 | `name: Type` — no space before colon, one after | Swift standard |
-| 9 | Colon — conformance/inheritance | 改 | `class Name: Proto` / `extension Name: Proto` — no space before colon | Sample; pick measured majority (some codebases use ` : `) |
-| 10 | Access-modifier order | 改 | modifier **before** `static` (`public static func`) | Sample; pick measured majority |
-| 11 | Multi-line signature | 改 | Colon-alignment: wrapped params align the param name under the first param's colon (see example) | Sample; align only if the codebase aligns |
-| 12 | `self.` | 增 | Explicit `self.` for member access; **mandatory** inside closures | Sample; pick measured majority |
-| 13 | `let _ =` side-effect init | 增/删 | `let _ = X.shared` to trigger a side-effectful init | Only normalize if the codebase uses this idiom |
-| 14 | Doc comments | 增 | `///` on public API with `- Parameter:` / `- Parameters:` / `- Returns:` | If the codebase documents public API |
-| 15 | Descriptive comments | 改 | `// ` with one space after `//`; preserve comment language | Standard |
-| 16 | Commented-out code | 改 | Match the codebase's commented-import style (e.g. `//import X`) **only if it uses one** | Sample |
-| 17 | Section comments | 增 | Section header comment line before an extension **only if the codebase uses them** | Sample |
-| 18 | Brace placement | 改 | Opening brace on same line; `else {` and `guard … else {` on same line | Swift standard (K&R) |
-| 19 | Empty/trivial body | 改 | One-line `func foo() {}` for protocol stubs that do nothing | Sample |
-| 20 | `switch` | 增/删 | One blank line after `switch x {` before the first `case` **if the codebase does so** | Sample |
-| 21 | Conditional compilation | 改 | `#if`/`#else`/`#endif` un-indented at column 0; content keeps its indent | Standard |
-| 22 | Blank around control-flow blocks | 增 | One blank line before & after a control-flow block (`if`/`else if`/`else`/`guard`/`for`/`while`/`switch`/`do`) when adjacent to other statements | Hard rule (user-mandated); see section + exceptions |
+| 1 | 文件头块 | 增/改 | 若代码库用标准 `//` 头（文件名/ target 名/作者/日期），归一化到它 | 采样；仅当全工程有头约定时才应用 |
+| 2 | 缩进 | 改 | 4 空格，不用 tab | Swift 标准；采样验证 |
+| 3 | `{` 开 body 后空行 | 增/删 | `{` 开 `func`/`init`/计算属性 body 后一行空行（多语句；一行琐细 stub 除外，见规则 19） | 硬规则（用户强制）；无视测得多数——见段 |
+| 4 | 无连续空行 | 删 | 任意处至多一行空行；`\n\n\n` → `\n\n` | 通用约定 |
+| 5 | 闭合 `}` 前不空行 | 删 | `}` 紧前无空行 | 通用约定 |
+| 6 | 声明间空行 | 增 | 方法间一行空行；顶层声明间一行 | 通用约定 |
+| 7 | 文件尾 | 删/增 | 单个结尾换行；无尾部空行 | 标准 |
+| 8 | 冒号 — 类型标注 | 改 | `name: Type`——冒号前无空格、后一格 | Swift 标准 |
+| 9 | 冒号 — 遵从/继承 | 改 | `class Name: Proto` / `extension Name: Proto`——冒号前无空格 | 采样；取测得多数（有的代码库用 ` : `） |
+| 10 | 访问修饰顺序 | 改 | 修饰符在 `static` **前**（`public static func`） | 采样；取测得多数 |
+| 11 | 多行签名 | 改 | 冒号对齐：换行参数名对齐到首个参数冒号下（见示例） | 采样；仅当代码库对齐时才对齐 |
+| 12 | `self.` | 增 | 显式 `self.` 访问成员；闭包内**强制** | 采样；取测得多数 |
+| 13 | `let _ =` 副作用初始化 | 增/删 | `let _ = X.shared` 触发有副作用的初始化 | 仅当代码库用此惯用法时才归一化 |
+| 14 | 文档注释 | 增 | 公开 API 用 `///`，含 `- Parameter:` / `- Parameters:` / `- Returns:` | 若代码库给公开 API 写文档 |
+| 15 | 描述性注释 | 改 | `// ` 后一格空格；保留注释语言 | 标准 |
+| 16 | 注释掉的代码 | 改 | 对齐代码库的注释掉的 import 风格（如 `//import X`）**仅当它用一种** | 采样 |
+| 17 | 分节注释 | 增 | extension 前的分节头注释行**仅当代码库用** | 采样 |
+| 18 | 大括号位置 | 改 | 开括号同行；`else {` 与 `guard … else {` 同行 | Swift 标准（K&R） |
+| 19 | 空/琐细 body | 改 | 无操作协议 stub 用一行 `func foo() {}` | 采样 |
+| 20 | `switch` | 增/删 | `switch x {` 后、首个 `case` 前一行空行**若代码库如此** | 采样 |
+| 21 | 条件编译 | 改 | `#if`/`#else`/`#endif` 列 0 不缩进；内容保留缩进 | 标准 |
+| 22 | 控制流块周围空行 | 增 | 控制流块（`if`/`else if`/`else`/`guard`/`for`/`while`/`switch`/`do`）与相邻语句之间前后各一行空行 | 硬规则（用户强制）；见段 + 例外 |
+| 23 | 注释位置与 tab 对齐结构 | 增/改 | 方法/类名注释在代码**之上**（前行 `///` 或 `//`）；类属性/声明注释在代码**后面**（同行 trailing `//`）；一段连续的属性声明与创建，其 trailing `//` 用 **tab 字符**对齐到同一列 | 硬规则（用户强制）；见段——与规则 2（缩进）正交 |
 
-## File header block (Rule 1)
-If the codebase uses a header block, normalize to exactly this shape, then ONE blank line, then imports:
+## 文件头块（规则 1）
+若代码库用文件头块，归一化到恰好这个形，然后**一行**空行，然后 import：
 ```swift
 //
-//  <FileName>.swift
-//  <TargetName>
+//  <文件名>.swift
+//  <target 名>
 //
 //  Created by <作者> on YYYY/M/D.
 //
 ```
-- If present but malformed (wrong slash count / spacing) → fix (改).
-- If the author/date already exist → **preserve them verbatim**. Only fill in if entirely absent.
-- `<TargetName>`: derive from the file's module context (Xcode target / module name). Do not invent one.
+- 若存在但格式错（斜杠数/空格错）→ 修（改）。
+- 若作者/日期已存在 → **原样保留**。仅当完全缺失才填。
+- `<target 名>`：由文件的模块上下文（Xcode target / 模块名）推导。不得杜撰。
 
-## Imports
-- `import Foundation` first, then other imports (e.g. `import CoreBluetooth`, project modules…).
-- ONE blank line after the import block.
-- Match the codebase's commented-import style for disabled imports.
+## import
+- `import Foundation` 在前，然后其他 import（如 `import CoreBluetooth`、工程模块…）。
+- import 块后**一行**空行。
+- 禁用的 import 对齐代码库的注释掉 import 风格。
 
-## Examples (generic patterns)
+## 示例（通用模式）
 
-### Colon-alignment in wrapped signatures (Rule 11)
+### 换行签名的冒号对齐（规则 11）
 ```swift
-// ✅ target (when the codebase aligns wrapped params)
+// ✅ 目标（当代码库对齐换行参数时）
 static public func scanPeripheral(condition: ScanConfig?,
                                   didDiscover: @escaping SearchPeripheralCallBack,
                                   complete: @escaping SearchCompleteCallBack) {
@@ -173,32 +179,32 @@ static public func scanPeripheral(condition: ScanConfig?,
                                complete: complete)
 }
 ```
-Note the things together: wrapped params colon-aligned; blank line after `{`; `let _ =` trigger (only if the codebase uses it).
+注意几件一起的事：换行参数冒号对齐；`{` 后空行；`let _ =` 触发（仅当代码库用）。
 
-### Conformance colon (Rule 9) — no space before colon
+### 遵从冒号（规则 9）——冒号前无空格
 ```swift
-// ✅ target                    // ❌ normalize away
+// ✅ 目标                    // ❌ 需修正掉
 class BleConnector: Connector      //  class BleConnector : Connector
 extension Core: CentralObserverInterface  //  extension Core : CentralObserverInterface
 ```
 
-### Access-modifier order (Rule 10)
+### 访问修饰顺序（规则 10）
 ```swift
-// ✅ target            // ❌ normalize away
+// ✅ 目标            // ❌ 需修正掉
 public static func foo()    //  static public func foo()
 ```
 
-### Blank line after `{` (Rule 3) + no blank before `}` (Rule 5)
-**This rule is user-mandated (hard):** always insert one blank line after `{` opening a `func`/`init`/computed-`var` body (multi-statement), regardless of the sampled codebase majority — even if every func in the file currently omits it. Exception: one-line trivial stubs `func foo() {}` (Rule 19).
+### `{` 后空行（规则 3）+ `}` 前不空行（规则 5）
+**本规则用户强制（硬）：** 开 `func`/`init`/计算属性 body 的 `{` 后**始终**插一行空行（多语句），无视采样代码库多数——即使文件里每个 func 当前都没空行。例外：一行琐细 stub `func foo() {}`（规则 19）。
 ```swift
-// ✅ target
+// ✅ 目标
 init() {
 
     let _ = AppNotification.shared
     CoreLog("Core init, Version:\(CoreVersion)", level: .info)
 }
 
-// ❌ fix: missing blank after {, or blank line right before }
+// ❌ 需修：{ 后缺空行，或 } 紧前有空行
 init() {
     let _ = AppNotification.shared
     CoreLog(...)
@@ -206,9 +212,9 @@ init() {
 }
 ```
 
-### `self.` in closures (Rule 12)
+### 闭包内 `self.`（规则 12）
 ```swift
-// ✅ target
+// ✅ 目标
 matchPeripheral(...) {[weak self] peripheral, err in
 
     guard let self = self else {
@@ -221,11 +227,11 @@ matchPeripheral(...) {[weak self] peripheral, err in
 }
 ```
 
-### Blank around control-flow blocks (Rule 22)
-Every control-flow keyword transition gets a blank line. The method-name/signature case is covered by Rule 3 (blank after `func … {`) and Rule 6 (blank between methods); this rule extends the same idea to `if` / `else if` / `else` / `guard` / `for` / `while` / `switch` / `do` blocks: separate a control-flow block from adjacent statements with one blank line — before the opening keyword when preceded by a statement, and after the closing `}` when followed by a statement.
+### 控制流块周围空行（规则 22）
+每个控制流关键字转换都给一行空行。方法名/签名那条由规则 3（`func … {` 后空行）与规则 6（方法间空行）覆盖；本规则把同样思路延伸到 `if` / `else if` / `else` / `guard` / `for` / `while` / `switch` / `do` 块：用一行空行把控制流块与相邻语句隔开——前面被语句前导时在开关键字前一行，后面被语句跟随时在闭 `}` 后一行。
 
 ```swift
-// ✅ target
+// ✅ 目标
 let x = compute()
 
 if x > 0 {
@@ -235,9 +241,9 @@ if x > 0 {
 let y = x + 1
 ```
 
-Adjacent control-flow blocks merge their before/after blanks into ONE (Rule 4 — never two):
+相邻控制流块把各自前/后空行合并为一行（规则 4——绝无两行）：
 ```swift
-// ✅ target
+// ✅ 目标
 if a {
     foo()
 }
@@ -247,10 +253,10 @@ if b {
 }
 ```
 
-Exceptions:
-- **`if` / `else if` / `else` chain stays tight** — no blank between a branch's `}` and the next `else` / `else if`; they are one construct:
+例外：
+- **`if` / `else if` / `else` 链保持紧凑**——分支 `}` 与下一个 `else` / `else if` 之间无空行；它们是一个构造：
 ```swift
-// ✅ target
+// ✅ 目标
 if x > 0 {
     a()
 } else if x < 0 {
@@ -259,39 +265,77 @@ if x > 0 {
     c()
 }
 ```
-- **No blank before the enclosing `}`** (Rule 5 wins): if the block is the last statement in a body, do not blank between its `}` and the scope's closing `}`.
-- **No double blank** (Rule 4 wins): merge into one.
-- This rule is **user-mandated**; it applies even when the sampled codebase does not exhibit the pattern, overriding the "measured majority" default for this dimension only.
+- **外层 `}` 前不空行**（规则 5 胜）：若块是 body 最后一条语句，其 `}` 与所在作用域闭合 `}` 之间不加空行。
+- **无两连空行**（规则 4 胜）：合并为一行。
+- 本规则**用户强制**；即使采样代码库无此模式也适用，仅对本维度覆盖"测得多数"默认。
 
-## Hard constraints — what NEVER changes without explicit request
+## 注释位置与 tab 对齐结构（规则 23）
+**本规则用户强制（硬）**——无视采样代码库多数都适用；仅对本维度覆盖规则 14/15 的位置默认与代码库既有注释位置。
+
+**方法 / 类名注释 → 代码之上**：方法、类（`class`/`struct`/`enum`/`actor`/`protocol`）等类型与方法的说明注释放声明**上一行**；公开 API 用 `///` 文档注释（规则 14），内部成员可用 `//`。
+```swift
+// ✅ 目标
+/// 相机检测步骤
+final class HCWQ95CameraStepController: HCWQ95BaseStepController {
+
+    /// 收到分步结果
+    override func receiveStepResult(_ stepResult: WearSelfChecking.StepResult) { ... }
+}
+```
+
+**类属性 / 声明注释 → 代码后面（同行 trailing）**：类内 `let`/`var` 属性、`typealias`、枚举 case 等声明的说明注释放**同一行尾部**（trailing `//`），不放上一行。
+```swift
+// ✅ 目标 — 一组连续属性声明/创建的 // 对齐到同一列（声明与创建都参与对齐）
+private var instructImageView: UIImageView!	// 检测示意图
+private var tipsLabel: UILabel!				// 提示文案
+private var instructLabel: UILabel!			// 操作指令
+private let stepCount: Int = 13				// 步骤总数（创建形式也参与对齐）
+private var currentStatus: CameraCheckStatus	// 当前检测状态
+```
+
+**结构 + tab 分组对齐（属性创建与声明必须对齐）**：trailing 注释用 **tab 字符**把 `//` 推到同一竖列，形成结构对齐。**一段连续的属性声明与创建**（`let`/`var` 属性，含声明 `var x: Type` 与创建 `var x = value` / `var x = Foo()`）视为**一个对齐组**，组内所有 trailing `//` 对齐到**同一列**——取组内最长代码行尾部 + tab 对齐，短属性在 `//` 前补足 tab 直到对齐到该列；**不得各写各的、散落不对齐**。不相邻的属性块各自独立取列。单条 trailing 也以 tab 起头。
+- **与规则 2 正交、不冲突**：规则 2 管**代码缩进**（4 空格，不用 tab）——代码行首缩进仍用 4 空格；本规则只管 **trailing `//` 前的对齐**，那里用 tab。两个维度互不干涉，同一文件可同时 4 空格缩进 + tab 对齐 trailing 注释。
+- **覆盖测得多数**：代码库现状（如 `HCWQ95TouchStepController` `var prompt: String // 提示语` 用单空格、`HCWQ95CameraStepController` 把属性注释放上方）不为本规则所动——属性注释一律改 trailing + tab 分组对齐；方法/类名注释一律上方。
+- 注释语言守规则 15（保留语言；中文 stays 中文）；`//` 后一空格守规则 15。
+
+## 硬约束——未经明确请求绝不改
 - **严格代码库风格**: 新增/修改代码必须严格对齐所采样代码库的既有风格（命名、模式、API、空白、注释密度与语言、访问控制），不得引入个人偏好或代码库未使用的惯例。
-- **Edit scope**: logic edits must fulfill the stated requirement; don't add unrelated changes beyond the request. Keep diff focused.
-- **业务日志 override**: the 业务日志规则 (user-mandated) requires adding business-only logs at every 关键 return 与流程分支 in the edited code; this overrides "Edit scope / minimize diff" for that dimension only — such logs are in-scope, not unrelated changes.
-- **调用栈日志充分性确认 override**: the 调用栈日志充分性确认 (user-mandated) requires tracing the edited code's full parent/child call-stack (align code_analytic), checking whether logs support next-time problem localization (关键错误 / 可完整定位问题点), and 补全所有缺失日志 across all involved files (not just the edited file); this overrides "Edit scope / minimize diff / single-file input" for that dimension — such cross-file log additions are in-scope, not unrelated changes.
-- **Identifiers**: don't rename types/methods/variables/parameters unless the requirement explicitly asks (even typos — `perpheral` stays `perpheral` unless told to fix).
-- **String literals**: don't edit log strings / error descriptions / quoted text unless the requirement asks.
-- **`#if` correctness**: only adjust indentation/spacing of compile-conditionals; never alter the condition or what's inside unless the requirement asks.
-- **Comments' meaning**: preserve the wording/language (Chinese stays Chinese); only fix `//` spacing/placement unless the requirement asks to change wording.
-- **Minimize diff**: if a line already conforms, leave it untouched — preserve git blame.
+- **编辑范围**: 逻辑编辑必须满足所述需求；不得加请求外的无关改动。保持 diff 聚焦。
+- **业务日志 override**: 业务日志规则（用户强制）要求在所编辑代码的每个关键 return 与流程分支补只含业务信息的日志；仅对该维度覆盖"编辑范围/最小 diff"——这类日志属范围内，不属无关改动。
+- **修改后完整上下文分析 override**: 该步骤用户强制，要求一遍改动后完整上下文读取（追完整父/子调用栈 + 下游分支，跨所有相关文件）同时确认日志充分性与影响域，细则见「修改后完整上下文分析」段；仅对该维度覆盖「编辑范围/最小 diff/单文件输入」——跨文件调用栈读取 + 日志补全属范围内，不属无关改动。
+- **标识符**: 除非需求明确要求，否则不重命名类型/方法/变量/参数（含拼写错误——`perpheral` 保持 `perpheral`，除非让改）。
+- **字符串字面量**: 除非需求要求，否则不改日志串/错误描述/引号文本。
+- **`#if` 正确性**: 只调整条件编译的缩进/空格；绝不改条件或其内容，除非需求要求。
+- **注释语义**: 保留措辞/语言（中文 stays 中文）；除非需求要求改措辞，否则只修 `//` 空格/位置。
+- **最小 diff**: 一行已符合就别动——保 git blame。
 
-## Common Mistakes
-| Mistake | Fix |
+## 常见误区
+| 误区 | 修正 |
 |---|---|
-| Adding unrelated logic changes beyond the request | Edit only what the requirement asks; keep diff focused. |
-| Renaming `perpheral`/`Connecttor` typos without being asked | Don't. Identifiers unchanged unless requirement says. |
-| Adding blank after `{` for a one-line `func foo() {}` | Rule 3 applies to multi-statement bodies; leave trivial stubs one-line (Rule 19). |
-| Imposing ` : ` conformance colon against the codebase majority | Sample first; target is the **measured majority** (often no space before colon, Rule 9). |
-| Reordering to `static public func` against the codebase majority | Sample first; target is the **measured majority** (often `public static func`, Rule 10). |
-| Double-blank "for readability" | Forbidden (Rule 4). One blank line max. |
-| Rewriting a Chinese comment into English | Preserve language; only fix `//` spacing. |
-| Touching every line for "consistency" | Only touch non-conforming lines. Minimize diff. |
-| Imposing a convention the codebase doesn't use | Don't. Only normalize to conventions the codebase itself exhibits — **except rules marked "user-mandated" in the Rule Table** (e.g. Rule 22), which apply regardless. |
-| Inserting a blank inside an `if`/`else if`/`else` chain (`}` then blank then `else {`) | The chain is one construct; keep `} else {` / `} else if {` tight. Blank only *around* the whole chain, not between its branches. |
-| Skipping 关键 return/流程 logging to "minimize diff" | 业务日志规则 is user-mandated and overrides minimize-diff/edit-scope for this dimension; when editing code, add a business-only log at every 关键 return 与流程分支 in the edited region (not on format-only runs). |
-| Putting raw `error` / stack / class names in the log | Log must contain business info only (operation + business entity + outcome). No `\(error)` / `error.localizedDescription` / `Thread.callStackSymbols` / internal class names / addresses / framework internals. |
+| 加请求外的无关逻辑改动 | 只编辑需求所要求的；保持 diff 聚焦。 |
+| 未被要求就重命名 `perpheral`/`Connecttor` 拼写 | 别改。除非需求明说，标识符不变。 |
+| 给一行 `func foo() {}` 加 `{` 后空行 | 规则 3 适用于多语句 body；琐细 stub 保持一行（规则 19）。 |
+| 违背代码库多数强加 ` : ` 遵从冒号 | 先采样；目标是**测得多数**（常为冒号前无空格，规则 9）。 |
+| 违背代码库多数重排成 `static public func` | 先采样；目标是**测得多数**（常为 `public static func`，规则 10）。 |
+| 为"可读性"加两连空行 | 禁止（规则 4）。至多一行空行。 |
+| 把中文注释改写成英文 | 保留语言；只修 `//` 空格。 |
+| 为"一致性"动每一行 | 只动不符合的行。最小 diff。 |
+| 强加代码库不用的约定 | 别。只归一化到代码库自身展现的约定——**规则表中标"用户强制"的规则除外**（如规则 22、规则 23），那些无视多数都适用。 |
+| 在 `if`/`else if`/`else` 链内插空行（`}` 后空行再 `else {`） | 链是一个构造；保持 `} else {` / `} else if {` 紧凑。空行只在整条链**周围**，不在分支间。 |
+| 为"最小 diff"跳过关键 return/流程日志 | 业务日志规则用户强制，对该维度覆盖最小 diff/编辑范围；编辑代码时，在所编辑区域每个关键 return 与流程分支补一条只含业务信息的日志（format-only 流程不做）。 |
+| 把原始 `error`/堆栈/类名放进日志 | 日志只含业务信息（操作 + 业务实体 + 结果）。禁 `\(error)`/`error.localizedDescription`/`Thread.callStackSymbols`/内部类名/地址/框架内部。 |
 | 只给 error/return 补日志、漏掉关键流程分支 | 关键控制流分支（决定成功失败/状态走向的 if/else/guard/for/while/switch）也要补业务日志，不止 error/return；分支入口或状态变更处补。 |
-| 只在所编辑方法内补日志、不追父/子调用栈 | 调用栈日志充分性确认 (user-mandated) 要求追完整父/子调用栈（对齐 code_analytic），确认日志支持下次定位（关键错误 + 可完整定位问题点），不支持则跨文件补全所有缺失日志；override edit-scope/minimize-diff/single-file。 |
-| 以「超出所给文件 / 只改单文件」跳过调用栈补日志 | 本规则 override single-file input，调用栈上下文涉及的所有文件（父/子调用者所在文件）都要补；不得跳过。 |
+| 只在所编辑方法内补日志/核验、不追父/子调用栈 | 修改后完整上下文分析（用户强制）要求一次完整读取追完整父/子调用栈，同一遍出日志充分性 + 影响域两份结论；覆盖编辑范围/最小 diff/单文件。 |
+| 把日志充分性与影响域拆成两步、各追一遍栈 | 重复劳动；本规则要求一次完整上下文读取，同一遍同时确认日志够不够定位 + 改动只对目标生效；不重复追栈。 |
+| 只看改动前的调用栈、不看改动后新增/变更的后续分支 | 漏掉改动引入的新路径（日志缺口与影响波及都会漏）。 |
+| 父调用者吞掉错误无日志、子调用者状态变更无日志 | 关键错误与定位点都缺失（日志充分性维度失败），须在这一遍里跨文件补全业务日志。 |
+| 发现改动波及非目标业务却静默交付 / Report 谎称"无影响" | 必须首选收窄改动（再跑本步），无法收窄则 Report 显式标注「影响域超出目标」+ 受影响业务 + 后果 + 建议。 |
+| 以「改动很小 / 只改一行」跳过 | 一行改动也可能改变调用方语义或下游状态；本规则覆盖最小 diff。 |
+| 以「超出所给文件 / 只改单文件」跳过 | 本规则覆盖单文件输入，调用栈上下文涉及的所有文件都要在这一遍里读。 |
+| 把属性注释放上方、方法/类名注释放 trailing（放反） | 规则 23 用户强制：方法/类名注释必在代码上方（`///`/`//` 上一行）；类属性/声明注释必同行 trailing。 |
+| 属性创建与声明的 trailing 注释用空格对齐、或散落不对齐 | 规则 23 要求一段连续属性声明与创建（含 `var x: Type` 声明与 `var x = value` 创建）视为一个对齐组，组内 trailing `//` 用 **tab 字符**对齐到同一列；与规则 2 缩进正交，不冲突。 |
+| 以「规则 2 不用 tab」拒绝 trailing 用 tab | 规则 2 只管**代码缩进**；trailing 注释对齐是另一维度，本规则用户强制用 tab，不违反规则 2。 |
+| 跟随代码库现状（单空格 trailing / 属性注释在上方）不改 | 规则 23 用户强制覆盖测得多数：属性注释一律改 trailing + tab 分组对齐，方法/类名注释一律上方。 |
 
-## Decision rule for unmapped patterns
-If you encounter a style situation **not in the Rule Table**, or a dimension where the codebase has no clear majority: do nothing to it. This skill normalizes to the codebase's measured conventions only — it does not impose personal preference. Surface the unmapped pattern in the summary instead of guessing.
+## 未映射模式的决策规则
+若遇到**不在规则表**的风格情况，或代码库无明确多数的维度：对它什么也不做。本 skill 只归一化到代码库的测得约定——不施加个人偏好。把未映射模式在总结里列出，而非瞎猜。

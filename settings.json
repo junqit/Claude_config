@@ -18,5 +18,9 @@
       "Bash(defaults write com.apple.Safari AllowJavaScriptFromAppleEvents:*)",
       "Bash(defaults delete com.apple.Safari AllowJavaScriptFromAppleEvents:*)"
     ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/.claude/statusline-command.sh"
   }
 }
